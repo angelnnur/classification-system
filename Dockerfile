@@ -5,8 +5,8 @@ WORKDIR /app
 # Копируем requirements
 COPY backend/requirements.txt .
 
-# Устанавливаем зависимости
-RUN pip install --no-cache-dir -r requirements.txt
+# Добавляем gunicorn
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Копируем весь backend код
 COPY backend/src ./backend/src
@@ -15,9 +15,10 @@ COPY backend/src ./backend/src
 ENV FLASK_ENV=production
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV PORT=5000
 
-# Меняем рабочую директорию в backend
-WORKDIR /app/backend/src
+# Экспонируем порт
+EXPOSE 5000
 
-# Запускаем приложение
-CMD ["python", "main.py"]
+# Запускаем через gunicorn (4 worker'а)
+CMD cd /app/backend/src && gunicorn --workers=2 --worker-class=sync --bind=0.0.0.0:5000 --timeout=60 --access-logfile=- --error-logfile=- "api.app:create_app()"
