@@ -27,9 +27,10 @@ RUN mkdir -p src/data/uploads src/data/processed src/data/plots
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=src/main.py
 
-# Открытие порта
-EXPOSE 5001
+# Открытие порта (Render.com использует переменную PORT)
+EXPOSE ${PORT:-5001}
 
 # Команда запуска через gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "4", "--timeout", "120", "--chdir", "src", "wsgi:app"]
+# Render.com предоставляет переменную PORT, используем её или 5001 по умолчанию
+CMD gunicorn --bind 0.0.0.0:${PORT:-5001} --workers 4 --timeout 120 --chdir src wsgi:app
 
