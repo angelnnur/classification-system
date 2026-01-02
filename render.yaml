@@ -1,0 +1,48 @@
+# Render.com Blueprint для автоматического деплоя
+services:
+  # PostgreSQL Database
+  - type: pspg
+    name: classification-db
+    plan: free
+    databaseName: product_classifier
+    user: postgres
+
+  # Backend API
+  - type: web
+    name: classification-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "False"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: classification-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://classification-frontend.onrender.com,http://localhost:5173
+    healthCheckPath: /health
+
+  # Frontend
+  - type: web
+    name: classification-frontend
+    env: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          name: classification-backend
+          type: web
+          property: host
+          format: https://${host}/api
+
