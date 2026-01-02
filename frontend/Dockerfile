@@ -12,7 +12,12 @@ RUN npm ci
 # Копирование исходного кода
 COPY . .
 
-# Сборка приложения
+# Передача переменных окружения в build stage
+# Render.com передает переменные окружения, которые доступны как ARG во время сборки
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL:-http://localhost:5001/api}
+
+# Сборка приложения (Vite подхватит VITE_API_URL из ENV)
 RUN npm run build
 
 # Production stage
