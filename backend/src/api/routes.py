@@ -141,14 +141,15 @@ def predict_category():
     product_name = data.get('product_name', '').strip()
     vectorizer, to_id, to_label = load_preprocessing_objects(Config.MODELS_BIN)
 
-    num_classes = len(to_id)
-    model = AutoencoderDL(input_dim=50, bottleneck_dim=64, num_classes=num_classes)
-    model.load_classifier(os.path.join('backend/', Config.MODELS_BIN, 'classifier.h5'))
-
     if not product_name:
         return jsonify({'error': 'product_name не указано'}), 400
 
     X = vectorizer.transform([product_name]).toarray()
+    input_dim = X.shape[1]  # Получаем реальную размерность из vectorizer
+    
+    num_classes = len(to_id)
+    model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
+    model.load_classifier(os.path.join('backend/', Config.MODELS_BIN, 'classifier.h5'))
 
     pred_labels, pred_probs = model.predict_class(X)
     pred_label = pred_labels[0]
@@ -217,7 +218,11 @@ def predict_category_from_file():
         vectorizer, to_id, to_label = load_preprocessing_objects(Config.MODELS_BIN)
         num_classes = len(to_id)
 
-        model = AutoencoderDL(input_dim=50, bottleneck_dim=64, num_classes=num_classes)
+        # Получаем размерность из первого примера
+        sample_X = vectorizer.transform([df['product_name'].iloc[0]]).toarray()
+        input_dim = sample_X.shape[1]
+        
+        model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
         model.load_classifier(os.path.join('backend/', Config.MODELS_BIN, 'classifier.h5'))
 
         results = []
