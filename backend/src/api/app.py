@@ -12,34 +12,35 @@ def create_app():
     
     # Разрешаем фронтенд с разных источников
     # Получаем URL frontend из переменной окружения или используем список по умолчанию
-    frontend_url = os.getenv("FRONTEND_URL", "")
     cors_origins = os.getenv("CORS_ORIGINS", "")
     
     # Формируем список разрешенных origins
     allowed_origins = [
         "http://localhost:5173",  # локальный dev
         "http://localhost:3000",  # альтернативный dev порт
-        os.getenv("FRONTEND_URL", "https://classification-system.netlify.app"),  # production Netlify
+        "http://localhost:80",    # локальный docker
     ]
-    
-    # Добавляем frontend URL если указан
-    if frontend_url:
-        allowed_origins.append(frontend_url)
     
     # Добавляем origins из CORS_ORIGINS (через запятую)
     if cors_origins:
         allowed_origins.extend([origin.strip() for origin in cors_origins.split(",")])
     
-    # Если ничего не указано, разрешаем все (для разработки)
-    # В production лучше указать конкретные URL
-    if not frontend_url and not cors_origins:
-        allowed_origins = ["*"]  # Разрешаем все для упрощения деплоя
-    
-    CORS(app,
-         origins=allowed_origins if allowed_origins != ["*"] else None,  # None = разрешить все
-         supports_credentials=True,
-         allow_headers=["Content-Type", "Authorization"],
-         methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"])
+    # По умолчанию разрешаем все origins для упрощения деплоя
+    # В production можно указать конкретные URL через CORS_ORIGINS
+    if cors_origins:
+        print(f"🔒 CORS настроен для origins: {allowed_origins}")
+        CORS(app,
+             origins=allowed_origins,
+             supports_credentials=True,
+             allow_headers=["Content-Type", "Authorization"],
+             methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"])
+    else:
+        print("🌐 CORS разрешает все origins (для упрощения деплоя)")
+        CORS(app,
+             origins="*",  # Разрешаем все для упрощения
+             supports_credentials=False,  # Не поддерживаем credentials при "*"
+             allow_headers=["Content-Type", "Authorization"],
+             methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"])
 
     db.init_app(app)
     JWTManager(app)
