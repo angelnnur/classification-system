@@ -11,14 +11,32 @@ def create_app():
     app.config.from_object(Config)
     
     # Разрешаем фронтенд с разных источников
+    # Получаем URL frontend из переменной окружения или используем список по умолчанию
+    frontend_url = os.getenv("FRONTEND_URL", "")
+    cors_origins = os.getenv("CORS_ORIGINS", "")
+    
+    # Формируем список разрешенных origins
     allowed_origins = [
         "http://localhost:5173",  # локальный dev
         "http://localhost:3000",  # альтернативный dev порт
         os.getenv("FRONTEND_URL", "https://classification-system.netlify.app"),  # production Netlify
     ]
     
+    # Добавляем frontend URL если указан
+    if frontend_url:
+        allowed_origins.append(frontend_url)
+    
+    # Добавляем origins из CORS_ORIGINS (через запятую)
+    if cors_origins:
+        allowed_origins.extend([origin.strip() for origin in cors_origins.split(",")])
+    
+    # Если ничего не указано, разрешаем все (для разработки)
+    # В production лучше указать конкретные URL
+    if not frontend_url and not cors_origins:
+        allowed_origins = ["*"]  # Разрешаем все для упрощения деплоя
+    
     CORS(app,
-         origins=allowed_origins,
+         origins=allowed_origins if allowed_origins != ["*"] else None,  # None = разрешить все
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization"],
          methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"])
@@ -53,30 +71,5 @@ def create_app():
     @app.route('/health')
     def health():
         return {"status": "ok"}, 200
-    
-    @app.route('/api/init-db', methods=['POST'])
-    def init_db_endpoint():
-        """Эндпоинт для ручной инициализации БД (для бесплатного плана Render)"""
-        try:
-            from database.models import User
-            with app.app_context():
-                db.create_all()
-                admin = User.query.filter_by(username='admin').first()
-                if not admin:
-                    admin = User(username='admin', role='admin')
-                    default_password = os.getenv('ADMIN_DEFAULT_PASSWORD', 'admin123')
-                    admin.set_password(default_password)
-                    db.session.add(admin)
-                    db.session.commit()
-                    return {
-                        "message": "База данных инициализирована",
-                        "admin_username": "admin",
-                        "admin_password": default_password,
-                        "warning": "Обязательно измените пароль после первого входа!"
-                    }, 200
-                else:
-                    return {"message": "База данных уже инициализирована"}, 200
-        except Exception as e:
-            return {"error": str(e)}, 500
 
     return app

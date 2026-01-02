@@ -10,7 +10,11 @@ export const auth = {
             
             return response.data;
         } catch(error) {
-            throw new Error('Ошибка входа в систему: ' + error)
+            // Более детальная обработка ошибок
+            const errorMessage = error.response?.data?.error || 
+                                error.message || 
+                                'Ошибка подключения к серверу. Проверьте URL API.';
+            throw new Error(errorMessage);
         }
     },
     register: async (username, password, role = 'user')=> {
