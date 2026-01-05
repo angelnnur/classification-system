@@ -8,28 +8,11 @@ from database.models import db
 
 # Настройка TensorFlow для экономии памяти и отключения GPU
 # ВАЖНО: Эти переменные должны быть установлены ДО импорта TensorFlow
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Уменьшаем логирование (0=all, 1=no INFO, 2=no WARNING, 3=no ERROR)
+# Но мы НЕ импортируем TensorFlow здесь - только настраиваем переменные окружения
+# Импорт будет происходить лениво (lazy) когда модель действительно нужна
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Уменьшаем логирование
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Явно отключаем GPU/CUDA
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
-
-# Импортируем TensorFlow только после настройки переменных окружения
-try:
-    import tensorflow as tf
-    # Явно отключаем все GPU устройства
-    tf.config.set_visible_devices([], 'GPU')
-    
-    # Ограничиваем использование памяти CPU
-    tf.config.set_soft_device_placement(True)
-    
-    # Ограничиваем количество потоков для экономии памяти
-    tf.config.threading.set_inter_op_parallelism_threads(1)
-    tf.config.threading.set_intra_op_parallelism_threads(1)
-    
-    print("✅ TensorFlow настроен для работы только на CPU")
-except ImportError:
-    print("⚠️  TensorFlow не установлен")
-except Exception as e:
-    print(f"⚠️  Ошибка настройки TensorFlow: {e}")
 
 def create_app():
     app = Flask(__name__)
