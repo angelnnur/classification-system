@@ -1,7 +1,20 @@
 import os
-# Отключаем GPU перед импортом Keras/TensorFlow
+# КРИТИЧЕСКИ ВАЖНО: Отключаем GPU ПЕРЕД импортом Keras/TensorFlow
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
+
+# Импортируем TensorFlow и настраиваем его ПЕРЕД импортом Keras
+try:
+    import tensorflow as tf
+    # Явно отключаем все GPU устройства
+    tf.config.set_visible_devices([], 'GPU')
+    # Ограничиваем использование памяти
+    tf.config.set_soft_device_placement(True)
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+    tf.config.threading.set_intra_op_parallelism_threads(1)
+except Exception as e:
+    print(f"⚠️  Предупреждение при настройке TensorFlow: {e}")
 
 from keras.models import Model, load_model
 from keras.layers import Dense, Input, Dropout, BatchNormalization
@@ -84,4 +97,18 @@ class AutoencoderDL:
     def load_classifier(self, path):
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model not found at {path}")
-        self.classifier = load_model(path)
+        
+        # Убеждаемся что GPU отключен перед загрузкой модели
+        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+        try:
+            import tensorflow as tf
+            tf.config.set_visible_devices([], 'GPU')
+        except:
+            pass
+        
+        try:
+            self.classifier = load_model(path)
+            print(f"✅ Модель загружена из {path}")
+        except Exception as e:
+            print(f"❌ Ошибка загрузки модели: {e}")
+            raise

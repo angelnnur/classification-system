@@ -3,9 +3,10 @@
 Это экономит память и ускоряет работу
 """
 import os
-# Убеждаемся, что GPU отключен перед импортом TensorFlow
+# КРИТИЧЕСКИ ВАЖНО: Отключаем GPU ПЕРЕД любым импортом TensorFlow/Keras
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
 
 from functools import lru_cache
 from training.processed import load_preprocessing_objects as _load_preprocessing_objects
@@ -34,16 +35,26 @@ def get_model_key(input_dim, bottleneck_dim, num_classes, classifier_path):
 
 def get_cached_model(input_dim, bottleneck_dim, num_classes, classifier_path):
     """Получить модель из кэша или загрузить новую"""
-    from models.autoencoder_model import AutoencoderDL
+    # Импортируем только когда модель действительно нужна (lazy import)
+    # Это предотвращает падения при старте приложения
+    try:
+        from models.autoencoder_model import AutoencoderDL
+    except Exception as e:
+        print(f"❌ Ошибка импорта AutoencoderDL: {e}")
+        raise
     
     model_key = get_model_key(input_dim, bottleneck_dim, num_classes, classifier_path)
     
     if model_key not in _model_cache:
         print(f"📦 Загрузка модели в кэш: {model_key}")
-        model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=bottleneck_dim, num_classes=num_classes)
-        model.load_classifier(classifier_path)
-        _model_cache[model_key] = model
-        print(f"✅ Модель загружена в кэш")
+        try:
+            model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=bottleneck_dim, num_classes=num_classes)
+            model.load_classifier(classifier_path)
+            _model_cache[model_key] = model
+            print(f"✅ Модель загружена в кэш")
+        except Exception as e:
+            print(f"❌ Ошибка загрузки модели: {e}")
+            raise
     else:
         print(f"♻️  Использование модели из кэша")
     
