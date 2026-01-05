@@ -49,29 +49,41 @@ def save_preprocessing_objects(vectorizer, to_id, to_label, output_dir=Config.MO
         pickle.dump(to_label, f)
 
 def load_preprocessing_objects(output_dir=Config.MODELS_BIN):
-    # В Docker контейнере рабочая директория /app, Config.MODELS_BIN = "src/data/models_bin"
-    # Путь должен быть относительно рабочей директории приложения
-    # Проверяем существование файла и корректируем путь если нужно
-    tokenizer_path = os.path.join(output_dir, 'tokenizer.pkl')
+    # Gunicorn запускается с --chdir src, поэтому рабочая директория /app/src
+    # Файлы находятся в /app/src/data/models_bin/
+    # Config.MODELS_BIN = "src/data/models_bin", но нужно "data/models_bin"
     
-    if not os.path.exists(tokenizer_path):
-        # Пробуем путь с 'backend/' префиксом (для локальной разработки вне Docker)
-        alt_path = os.path.join('backend', output_dir, 'tokenizer.pkl')
-        if os.path.exists(alt_path):
-            output_dir = os.path.join('backend', output_dir)
-        else:
-            raise FileNotFoundError(
-                f"Не найдены файлы моделей. Проверьте путь: {output_dir}\n"
-                f"Ожидаемые файлы: tokenizer.pkl, label2idx.pkl, idx2label.pkl"
-            )
+    # Пробуем разные варианты путей
+    possible_paths = [
+        output_dir,  # "src/data/models_bin" (для локального запуска без --chdir)
+        output_dir.replace('src/', ''),  # "data/models_bin" (для Docker с --chdir src)
+        os.path.join('backend', output_dir),  # "backend/src/data/models_bin" (для локальной разработки)
+    ]
     
-    with open(os.path.join(output_dir, 'tokenizer.pkl'), 'rb') as f:
+    found_path = None
+    for path in possible_paths:
+        tokenizer_path = os.path.join(path, 'tokenizer.pkl')
+        if os.path.exists(tokenizer_path):
+            found_path = path
+            break
+    
+    if not found_path:
+        # Показываем текущую рабочую директорию для отладки
+        cwd = os.getcwd()
+        raise FileNotFoundError(
+            f"Не найдены файлы моделей.\n"
+            f"Текущая рабочая директория: {cwd}\n"
+            f"Пробовали пути: {possible_paths}\n"
+            f"Ожидаемые файлы: tokenizer.pkl, label2idx.pkl, idx2label.pkl"
+        )
+    
+    with open(os.path.join(found_path, 'tokenizer.pkl'), 'rb') as f:
         vectorizer = pickle.load(f)
 
-    with open(os.path.join(output_dir, 'label2idx.pkl'), 'rb') as f:
+    with open(os.path.join(found_path, 'label2idx.pkl'), 'rb') as f:
         to_id = pickle.load(f)
 
-    with open(os.path.join(output_dir, 'idx2label.pkl'), 'rb') as f:
+    with open(os.path.join(found_path, 'idx2label.pkl'), 'rb') as f:
         to_label = pickle.load(f)
 
     return vectorizer, to_id, to_label

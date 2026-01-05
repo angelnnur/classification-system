@@ -150,13 +150,22 @@ def predict_category():
     num_classes = len(to_id)
     model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
     
-    # Путь к модели - в Docker контейнере рабочая директория /app
-    classifier_path = os.path.join(Config.MODELS_BIN, 'classifier.h5')
-    if not os.path.exists(classifier_path):
-        # Пробуем путь с 'backend/' префиксом (для локальной разработки)
-        alt_path = os.path.join('backend', Config.MODELS_BIN, 'classifier.h5')
-        if os.path.exists(alt_path):
-            classifier_path = alt_path
+    # Путь к модели - gunicorn запускается с --chdir src, рабочая директория /app/src
+    # Пробуем разные варианты путей
+    possible_paths = [
+        os.path.join(Config.MODELS_BIN, 'classifier.h5'),  # "src/data/models_bin/classifier.h5"
+        os.path.join(Config.MODELS_BIN.replace('src/', ''), 'classifier.h5'),  # "data/models_bin/classifier.h5"
+        os.path.join('backend', Config.MODELS_BIN, 'classifier.h5'),  # "backend/src/data/models_bin/classifier.h5"
+    ]
+    
+    classifier_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            classifier_path = path
+            break
+    
+    if not classifier_path:
+        raise FileNotFoundError(f"Не найдена модель classifier.h5. Пробовали пути: {possible_paths}")
     
     model.load_classifier(classifier_path)
 
@@ -233,13 +242,22 @@ def predict_category_from_file():
         
         model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
         
-        # Путь к модели - в Docker контейнере рабочая директория /app
-        classifier_path = os.path.join(Config.MODELS_BIN, 'classifier.h5')
-        if not os.path.exists(classifier_path):
-            # Пробуем путь с 'backend/' префиксом (для локальной разработки)
-            alt_path = os.path.join('backend', Config.MODELS_BIN, 'classifier.h5')
-            if os.path.exists(alt_path):
-                classifier_path = alt_path
+        # Путь к модели - gunicorn запускается с --chdir src, рабочая директория /app/src
+        # Пробуем разные варианты путей
+        possible_paths = [
+            os.path.join(Config.MODELS_BIN, 'classifier.h5'),  # "src/data/models_bin/classifier.h5"
+            os.path.join(Config.MODELS_BIN.replace('src/', ''), 'classifier.h5'),  # "data/models_bin/classifier.h5"
+            os.path.join('backend', Config.MODELS_BIN, 'classifier.h5'),  # "backend/src/data/models_bin/classifier.h5"
+        ]
+        
+        classifier_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                classifier_path = path
+                break
+        
+        if not classifier_path:
+            raise FileNotFoundError(f"Не найдена модель classifier.h5. Пробовали пути: {possible_paths}")
         
         model.load_classifier(classifier_path)
 
