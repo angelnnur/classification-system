@@ -149,7 +149,16 @@ def predict_category():
     
     num_classes = len(to_id)
     model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
-    model.load_classifier(os.path.join('backend/', Config.MODELS_BIN, 'classifier.h5'))
+    
+    # Путь к модели - в Docker контейнере рабочая директория /app
+    classifier_path = os.path.join(Config.MODELS_BIN, 'classifier.h5')
+    if not os.path.exists(classifier_path):
+        # Пробуем путь с 'backend/' префиксом (для локальной разработки)
+        alt_path = os.path.join('backend', Config.MODELS_BIN, 'classifier.h5')
+        if os.path.exists(alt_path):
+            classifier_path = alt_path
+    
+    model.load_classifier(classifier_path)
 
     pred_labels, pred_probs = model.predict_class(X)
     pred_label = pred_labels[0]
@@ -223,7 +232,16 @@ def predict_category_from_file():
         input_dim = sample_X.shape[1]
         
         model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
-        model.load_classifier(os.path.join('backend/', Config.MODELS_BIN, 'classifier.h5'))
+        
+        # Путь к модели - в Docker контейнере рабочая директория /app
+        classifier_path = os.path.join(Config.MODELS_BIN, 'classifier.h5')
+        if not os.path.exists(classifier_path):
+            # Пробуем путь с 'backend/' префиксом (для локальной разработки)
+            alt_path = os.path.join('backend', Config.MODELS_BIN, 'classifier.h5')
+            if os.path.exists(alt_path):
+                classifier_path = alt_path
+        
+        model.load_classifier(classifier_path)
 
         results = []
         for idx, product_name in enumerate(df['product_name'].values):

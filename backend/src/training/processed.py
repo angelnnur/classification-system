@@ -49,7 +49,22 @@ def save_preprocessing_objects(vectorizer, to_id, to_label, output_dir=Config.MO
         pickle.dump(to_label, f)
 
 def load_preprocessing_objects(output_dir=Config.MODELS_BIN):
-    output_dir = 'backend/' + output_dir
+    # В Docker контейнере рабочая директория /app, Config.MODELS_BIN = "src/data/models_bin"
+    # Путь должен быть относительно рабочей директории приложения
+    # Проверяем существование файла и корректируем путь если нужно
+    tokenizer_path = os.path.join(output_dir, 'tokenizer.pkl')
+    
+    if not os.path.exists(tokenizer_path):
+        # Пробуем путь с 'backend/' префиксом (для локальной разработки вне Docker)
+        alt_path = os.path.join('backend', output_dir, 'tokenizer.pkl')
+        if os.path.exists(alt_path):
+            output_dir = os.path.join('backend', output_dir)
+        else:
+            raise FileNotFoundError(
+                f"Не найдены файлы моделей. Проверьте путь: {output_dir}\n"
+                f"Ожидаемые файлы: tokenizer.pkl, label2idx.pkl, idx2label.pkl"
+            )
+    
     with open(os.path.join(output_dir, 'tokenizer.pkl'), 'rb') as f:
         vectorizer = pickle.load(f)
 
