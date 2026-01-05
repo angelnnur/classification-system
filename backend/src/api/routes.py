@@ -134,21 +134,21 @@ def predict():
 @api_bp.route("/predict_category", methods=["POST"])
 @jwt_required()
 def predict_category():
-    from models.autoencoder_model import AutoencoderDL
-    from training.processed import load_preprocessing_objects
+    from api.model_cache import get_preprocessing_objects, get_cached_model
 
     data = request.get_json()
     product_name = data.get('product_name', '').strip()
-    vectorizer, to_id, to_label = load_preprocessing_objects(Config.MODELS_BIN)
 
     if not product_name:
         return jsonify({'error': 'product_name не указано'}), 400
 
+    # Используем кэшированные preprocessing objects
+    vectorizer, to_id, to_label = get_preprocessing_objects()
+    
     X = vectorizer.transform([product_name]).toarray()
     input_dim = X.shape[1]  # Получаем реальную размерность из vectorizer
     
     num_classes = len(to_id)
-    model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
     
     # Путь к модели - gunicorn запускается с --chdir src, рабочая директория /app/src
     # Пробуем разные варианты путей
@@ -165,9 +165,10 @@ def predict_category():
             break
     
     if not classifier_path:
-        raise FileNotFoundError(f"Не найдена модель classifier.h5. Пробовали пути: {possible_paths}")
+        return jsonify({'error': f'Не найдена модель classifier.h5. Пробовали пути: {possible_paths}'}), 500
     
-    model.load_classifier(classifier_path)
+    # Используем кэшированную модель
+    model = get_cached_model(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes, classifier_path=classifier_path)
 
     pred_labels, pred_probs = model.predict_class(X)
     pred_label = pred_labels[0]
@@ -232,15 +233,15 @@ def predict_category_from_file():
         if df.empty:
             return jsonify({'error': 'No valid product names in file'}), 400
 
-        # Загружаем модель и vectorizer
-        vectorizer, to_id, to_label = load_preprocessing_objects(Config.MODELS_BIN)
+        # Используем кэшированные preprocessing objects
+        from api.model_cache import get_preprocessing_objects, get_cached_model
+        
+        vectorizer, to_id, to_label = get_preprocessing_objects()
         num_classes = len(to_id)
 
         # Получаем размерность из первого примера
         sample_X = vectorizer.transform([df['product_name'].iloc[0]]).toarray()
         input_dim = sample_X.shape[1]
-        
-        model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
         
         # Путь к модели - gunicorn запускается с --chdir src, рабочая директория /app/src
         # Пробуем разные варианты путей
@@ -257,9 +258,10 @@ def predict_category_from_file():
                 break
         
         if not classifier_path:
-            raise FileNotFoundError(f"Не найдена модель classifier.h5. Пробовали пути: {possible_paths}")
+            return jsonify({'error': f'Не найдена модель classifier.h5. Пробовали пути: {possible_paths}'}), 500
         
-        model.load_classifier(classifier_path)
+        # Используем кэшированную модель
+        model = get_cached_model(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes, classifier_path=classifier_path)
 
         results = []
         for idx, product_name in enumerate(df['product_name'].values):

@@ -6,6 +6,27 @@ from api.routes import api_bp
 from flask_jwt_extended import JWTManager
 from database.models import db
 
+# Настройка TensorFlow для экономии памяти
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Уменьшаем логирование
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
+# Импортируем TensorFlow только после настройки переменных окружения
+try:
+    import tensorflow as tf
+    # Ограничиваем использование памяти GPU (если есть)
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            print(f"Ошибка настройки GPU: {e}")
+    
+    # Ограничиваем использование памяти CPU
+    tf.config.set_soft_device_placement(True)
+except ImportError:
+    pass  # TensorFlow не установлен
+
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)

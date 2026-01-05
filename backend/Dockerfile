@@ -32,5 +32,6 @@ EXPOSE ${PORT:-5001}
 
 # Команда запуска через gunicorn
 # Render.com предоставляет переменную PORT, используем её или 5001 по умолчанию
-CMD gunicorn --bind 0.0.0.0:${PORT:-5001} --workers 4 --timeout 120 --chdir src wsgi:app
+# Используем 1 worker для экономии памяти на бесплатном плане (512MB)
+CMD gunicorn --bind 0.0.0.0:${PORT:-5001} --workers 1 --threads 2 --timeout 120 --chdir src wsgi:app
 
