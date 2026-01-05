@@ -1,8 +1,12 @@
+import os
+# Отключаем GPU перед импортом Keras/TensorFlow
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 from keras.models import Model, load_model
 from keras.layers import Dense, Input, Dropout, BatchNormalization
 from keras.losses import CategoricalCrossentropy
 from keras.optimizers import Adam
-import os
 
 
 class AutoencoderDL:

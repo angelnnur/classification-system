@@ -11,5 +11,5 @@ flask_jwt_extended
 openpyxl
 matplotlib
 python-dotenv
-tensorflow
+tensorflow-cpu
 gunicorn

@@ -6,26 +6,30 @@ from api.routes import api_bp
 from flask_jwt_extended import JWTManager
 from database.models import db
 
-# Настройка TensorFlow для экономии памяти
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Уменьшаем логирование
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+# Настройка TensorFlow для экономии памяти и отключения GPU
+# ВАЖНО: Эти переменные должны быть установлены ДО импорта TensorFlow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Уменьшаем логирование (0=all, 1=no INFO, 2=no WARNING, 3=no ERROR)
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Явно отключаем GPU/CUDA
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
 
 # Импортируем TensorFlow только после настройки переменных окружения
 try:
     import tensorflow as tf
-    # Ограничиваем использование памяти GPU (если есть)
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
-        try:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-        except RuntimeError as e:
-            print(f"Ошибка настройки GPU: {e}")
+    # Явно отключаем все GPU устройства
+    tf.config.set_visible_devices([], 'GPU')
     
     # Ограничиваем использование памяти CPU
     tf.config.set_soft_device_placement(True)
+    
+    # Ограничиваем количество потоков для экономии памяти
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+    tf.config.threading.set_intra_op_parallelism_threads(1)
+    
+    print("✅ TensorFlow настроен для работы только на CPU")
 except ImportError:
-    pass  # TensorFlow не установлен
+    print("⚠️  TensorFlow не установлен")
+except Exception as e:
+    print(f"⚠️  Ошибка настройки TensorFlow: {e}")
 
 def create_app():
     app = Flask(__name__)

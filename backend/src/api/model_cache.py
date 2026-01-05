@@ -3,6 +3,10 @@
 Это экономит память и ускоряет работу
 """
 import os
+# Убеждаемся, что GPU отключен перед импортом TensorFlow
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 from functools import lru_cache
 from training.processed import load_preprocessing_objects as _load_preprocessing_objects
 from config import Config
