@@ -8,6 +8,8 @@ scikit-learn
 torch
 nltk
 flask_jwt_extended
-scikit-learn
 openpyxl
 matplotlib
+python-dotenv
+tensorflow-cpu
+gunicorn
