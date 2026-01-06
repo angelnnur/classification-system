@@ -5,7 +5,7 @@ load_dotenv()
 
 class Config:
     ENV = os.getenv('FLASK_ENV', 'development')
-    DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 'yes')
+    DEBUG = os.getenv('FLASK_DEBUG', 'False')
     HOST = os.getenv('FLASK_HOST', '0.0.0.0')
     PORT = int(os.getenv('FLASK_PORT', 5001))
     DB_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:1234@localhost:5432/product_classifier')
