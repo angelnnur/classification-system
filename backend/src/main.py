@@ -2,9 +2,10 @@ from api.app import create_app
 from config import Config
 import sys
 
-def main():
-    app = create_app()
+app = create_app()
 
+def main():
+    """Запуск для разработки (локально)"""
     try:
         app.run(host=Config.HOST, port=Config.PORT, debug=Config.DEBUG)
     except KeyboardInterrupt:
