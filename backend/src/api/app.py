@@ -11,31 +11,21 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
-    cors_origins = os.getenv("CORS_ORIGINS", "")
+    production_frontend_url = os.getenv("CORS_ORIGINS", "")
     
-    # Формируем список разрешенных origins
-    allowed_origins = [
-        "http://localhost:5173"
+    allowed_frontend_urls = [
+        "http://localhost:5173" #local frontend url
     ]
     
-    if cors_origins:
-        allowed_origins.extend([origin.strip() for origin in cors_origins.split(",")])
+    if production_frontend_url:
+        allowed_frontend_urls.extend([origin.strip() for origin in production_frontend_url.split(",")])
     
-    if cors_origins:
-        print(f"🔒 CORS настроен для origins: {allowed_origins}")
-        CORS(app,
-             origins=allowed_origins,
-             supports_credentials=True,
-             allow_headers=["Content-Type", "Authorization"],
-             methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"])
-    else:
-        print("🌐 CORS разрешает все origins (для упрощения деплоя)")
-        CORS(app,
-             origins="*",  # Разрешаем все для упрощения
-             supports_credentials=False,  # Не поддерживаем credentials при "*"
-             allow_headers=["Content-Type", "Authorization"],
-             methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"])
-
+    CORS(app,
+        origins=allowed_frontend_urls,
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"])
+    
     db.init_app(app)
     JWTManager(app)
 

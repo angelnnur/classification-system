@@ -38,5 +38,4 @@ EXPOSE ${PORT:-5001}
 # Render.com предоставляет переменную PORT через окружение
 # Используем 1 worker для экономии памяти на бесплатном плане (512MB)
 # Используем shell форму для подстановки переменной PORT
-CMD sh -c 'gunicorn --bind 0.0.0.0:${PORT:-5001} --workers 1 --threads 2 --timeout 120 --chdir src main:app'
-
+CMD sh -c 'gunicorn --bind 0.0.0.0:${PORT:-5001} --chdir src main:app'
