@@ -134,7 +134,8 @@ def predict():
 @api_bp.route("/predict_category", methods=["POST"])
 @jwt_required()
 def predict_category():
-    from api.model_cache import get_preprocessing_objects, get_cached_model
+    from training.processed import load_preprocessing_objects
+    from models.autoencoder_model import AutoencoderDL
 
     data = request.get_json()
     product_name = data.get('product_name', '').strip()
@@ -142,8 +143,8 @@ def predict_category():
     if not product_name:
         return jsonify({'error': 'product_name не указано'}), 400
 
-    # Используем кэшированные preprocessing objects
-    vectorizer, to_id, to_label = get_preprocessing_objects()
+    # Загружаем preprocessing objects
+    vectorizer, to_id, to_label = load_preprocessing_objects(Config.MODELS_BIN)
     
     X = vectorizer.transform([product_name]).toarray()
     input_dim = X.shape[1]  # Получаем реальную размерность из vectorizer
@@ -167,8 +168,9 @@ def predict_category():
     if not classifier_path:
         return jsonify({'error': f'Не найдена модель classifier.h5. Пробовали пути: {possible_paths}'}), 500
     
-    # Используем кэшированную модель
-    model = get_cached_model(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes, classifier_path=classifier_path)
+    # Загружаем модель напрямую
+    model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
+    model.load_classifier(classifier_path)
 
     pred_labels, pred_probs = model.predict_class(X)
     pred_label = pred_labels[0]
@@ -198,7 +200,6 @@ def predict_category():
 @jwt_required()
 def predict_category_from_file():
     from models.autoencoder_model import AutoencoderDL
-    from training.processed import load_preprocessing_objects
 
     try:
         if 'file' not in request.files:
@@ -233,10 +234,11 @@ def predict_category_from_file():
         if df.empty:
             return jsonify({'error': 'No valid product names in file'}), 400
 
-        # Используем кэшированные preprocessing objects
-        from api.model_cache import get_preprocessing_objects, get_cached_model
+        # Загружаем preprocessing objects
+        from training.processed import load_preprocessing_objects
+        from models.autoencoder_model import AutoencoderDL
         
-        vectorizer, to_id, to_label = get_preprocessing_objects()
+        vectorizer, to_id, to_label = load_preprocessing_objects(Config.MODELS_BIN)
         num_classes = len(to_id)
 
         # Получаем размерность из первого примера
@@ -260,8 +262,9 @@ def predict_category_from_file():
         if not classifier_path:
             return jsonify({'error': f'Не найдена модель classifier.h5. Пробовали пути: {possible_paths}'}), 500
         
-        # Используем кэшированную модель
-        model = get_cached_model(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes, classifier_path=classifier_path)
+        # Загружаем модель напрямую
+        model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
+        model.load_classifier(classifier_path)
 
         results = []
         for idx, product_name in enumerate(df['product_name'].values):
