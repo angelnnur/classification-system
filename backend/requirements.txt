@@ -13,3 +13,6 @@ matplotlib
 python-dotenv
 tensorflow-cpu
 gunicorn
+requests
+beautifulsoup4
+selenium
