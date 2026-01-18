@@ -1,37 +1,39 @@
 import pandas as pd
 import pickle
 import os
-from config import Config
+import re
+from ..config import Config
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-def preprocess_data(csv_file, min_samples_per_category=20):
-    # 1. Открытие файла
+def preprocess_data(csv_file, min_samples_per_category=20, max_features=2000):
     df = pd.read_csv(csv_file)
 
-    # 2. Проверка на наличие полей
-    if 'product_name' not in df.columns or 'category' not in df.columns:
+    if 'product_name' not in df.columns or 'category_path' not in df.columns:
         raise ValueError("В файле отсутствует информация о товарах или категория!")
 
-    # 3. Очистка
-    df = df.drop_duplicates(subset=['product_name']) # удаление дублей
-
-    df['product_name'] = df['product_name'].fillna('').astype(str).str.strip() # удаление пустых строк
+    df = df.drop_duplicates(subset=['product_name'])
+    
+    df['product_name'] = df['product_name'].fillna('').astype(str)
+    df['product_name'] = df['product_name'].str.lower().str.strip()
+    df['product_name'] = df['product_name'].str.replace(r'\s+', ' ', regex=True)  # множественные пробелы -> один
+    
     df = df[df['product_name'] != '']
+    df = df[df['category_path'].notna()]
 
-    category_counts = df['category'].value_counts()
+    category_counts = df['category_path'].value_counts()
     valid_categories = category_counts[category_counts >= min_samples_per_category].index
-    df = df[df['category'].isin(valid_categories)] # удаление категорий, которые содержать меньше 20 товаров для исключения выбросов
+    df = df[df['category_path'].isin(valid_categories)]
+    
+    print(f"✅ После фильтрации: {len(df)} товаров в {len(valid_categories)} категориях")
 
-    # 4. Векторизация
-    vectorizer = TfidfVectorizer(max_features=1000)
+    vectorizer = TfidfVectorizer(max_features=max_features, lowercase=False)  # lowercase уже применен
     X = vectorizer.fit_transform(df['product_name']).toarray()
 
-    # 5. Создание словаря из категорий
-    unique_categories = sorted(df['category'].unique())
+    unique_categories = sorted(df['category_path'].unique())
     to_id = {cat: i for i, cat in enumerate(unique_categories)}
     to_label = {i: cat for cat, i in to_id.items()}
 
-    y = df['category'].map(to_id).values
+    y = df['category_path'].map(to_id).values
 
     return X, y, vectorizer, to_id, to_label
 

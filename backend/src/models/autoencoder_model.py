@@ -29,15 +29,18 @@ class AutoencoderDL:
         self.num_classes = num_classes
         self.classifier = None
 
-    def build_model(self):
-
-        # Входной слой
+    def build_model(self, dropout_rate=0.3):
         input_layer = Input(shape=(self.input_dim,), name='input')
 
-        # Енкодер
-        encoder_layer = Dense(512, activation="relu")(input_layer)
+        encoder_layer = Dense(1024, activation="relu")(input_layer)
+        encoder_layer = Dropout(dropout_rate)(encoder_layer)
+        
+        encoder_layer = Dense(512, activation="relu")(encoder_layer)
+        encoder_layer = Dropout(dropout_rate)(encoder_layer)
+        
         encoder_layer = Dense(256, activation="relu")(encoder_layer)
-        encoder_layer = Dense(128, activation="relu")(encoder_layer)
+        encoder_layer = Dropout(dropout_rate * 0.7)(encoder_layer)
+        
         bottleneck_layer = Dense(self.bottleneck_dim, name="bottleneck_layer")(encoder_layer)
 
         # Классификация
@@ -54,7 +57,7 @@ class AutoencoderDL:
 
         return self.classifier
 
-    def train_classifier(self, X, y, epochs=50, batch_size=64):
+    def train_classifier(self, X, y, epochs=50, batch_size=64, validation_split=0.2, use_early_stopping=True):
 
         if self.classifier is None:
             self.build_model()
@@ -62,13 +65,29 @@ class AutoencoderDL:
         print(f"\n[INFO] ПАРАМЕТРЫ ОБУЧЕНИЯ:")
         print(f"  X.shape={X.shape}, y.shape={y.shape}")
         print(f"  epochs={epochs}, batch_size={batch_size}")
+        print(f"  validation_split={validation_split}")
+
+        callbacks = []
+        
+        # Early Stopping для предотвращения переобучения
+        if use_early_stopping and validation_split > 0:
+            from keras.callbacks import EarlyStopping
+            early_stopping = EarlyStopping(
+                monitor='val_loss',
+                patience=5,
+                restore_best_weights=True,
+                verbose=1
+            )
+            callbacks.append(early_stopping)
 
         history = self.classifier.fit(
             X, y,
             epochs=epochs,
             batch_size=batch_size,
+            validation_split=validation_split,
             verbose=1,
-            shuffle=True
+            shuffle=True,
+            callbacks=callbacks
         )
 
         print("\n[OK] Обучение завершено!")
@@ -80,6 +99,12 @@ class AutoencoderDL:
         print(f"\n[РЕЗУЛЬТАТЫ]")
         print(f"  Train Accuracy: {final_train_acc:.4f} ({final_train_acc * 100:.1f}%)")
         print(f"  Train Loss:     {final_train_loss:.4f}")
+        
+        if validation_split > 0 and 'val_accuracy' in history.history:
+            final_val_acc = history.history['val_accuracy'][-1]
+            final_val_loss = history.history['val_loss'][-1]
+            print(f"  Val Accuracy:   {final_val_acc:.4f} ({final_val_acc * 100:.1f}%)")
+            print(f"  Val Loss:       {final_val_loss:.4f}")
 
         return history
 
