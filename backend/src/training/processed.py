@@ -2,7 +2,7 @@ import pandas as pd
 import pickle
 import os
 import re
-from ..config import Config
+from config import Config
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 def preprocess_data(csv_file, min_samples_per_category=20, max_features=2000):
