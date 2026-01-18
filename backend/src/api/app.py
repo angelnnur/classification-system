@@ -23,9 +23,9 @@ def create_app():
     CORS(app,
         origins=allowed_frontend_urls,
         supports_credentials=True,
-        allow_headers=["Content-Type", "Authorization"],
+         allow_headers=["Content-Type", "Authorization"],
         methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"])
-    
+
     db.init_app(app)
     JWTManager(app)
 

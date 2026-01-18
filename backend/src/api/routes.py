@@ -139,24 +139,37 @@ def predict_category():
 
     data = request.get_json()
     product_name = data.get('product_name', '').strip()
+    marketplace = data.get('marketplace', 'wildberries').strip().lower()  # По умолчанию wildberries
 
     if not product_name:
         return jsonify({'error': 'product_name не указано'}), 400
 
-    # Загружаем preprocessing objects
-    vectorizer, to_id, to_label = load_preprocessing_objects(Config.MODELS_BIN)
-    
-    X = vectorizer.transform([product_name]).toarray()
-    input_dim = X.shape[1]  # Получаем реальную размерность из vectorizer
-    
+    valid_marketplaces = ['wildberries', 'ozon', 'yandex_market']
+    if marketplace not in valid_marketplaces:
+        return jsonify({'error': f'Неверный маркетплейс. Доступные: {", ".join(valid_marketplaces)}'}), 400
+
+    product_name_normalized = product_name.lower().strip()
+    product_name_normalized = re.sub(r'\s+', ' ', product_name_normalized)
+
+    model_dir = os.path.join(Config.MODELS_BIN, marketplace)
+    vectorizer, to_id, to_label = load_preprocessing_objects(model_dir)
+
+    X = vectorizer.transform([product_name_normalized]).toarray()
+    input_dim = X.shape[1]
     num_classes = len(to_id)
     
-    # Путь к модели - gunicorn запускается с --chdir src, рабочая директория /app/src
-    # Пробуем разные варианты путей
+
+    bottleneck_dims = {
+        'wildberries': 128,
+        'ozon': 128,
+        'yandex_market': 256
+    }
+    bottleneck_dim = bottleneck_dims[marketplace]
+    
     possible_paths = [
-        os.path.join(Config.MODELS_BIN, 'classifier.h5'),  # "src/data/models_bin/classifier.h5"
-        os.path.join(Config.MODELS_BIN.replace('src/', ''), 'classifier.h5'),  # "data/models_bin/classifier.h5"
-        os.path.join('backend', Config.MODELS_BIN, 'classifier.h5'),  # "backend/src/data/models_bin/classifier.h5"
+        os.path.join(model_dir, 'classifier.h5'),
+        os.path.join(model_dir.replace('src/', ''), 'classifier.h5'),
+        os.path.join('backend', model_dir, 'classifier.h5'),
     ]
     
     classifier_path = None
@@ -166,10 +179,10 @@ def predict_category():
             break
     
     if not classifier_path:
-        return jsonify({'error': f'Не найдена модель classifier.h5. Пробовали пути: {possible_paths}'}), 500
+        return jsonify({'error': f'Не найдена модель для маркетплейса {marketplace}. Пробовали пути: {possible_paths}'}), 500
     
-    # Загружаем модель напрямую
-    model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
+    # Загружаем модель
+    model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=bottleneck_dim, num_classes=num_classes)
     model.load_classifier(classifier_path)
 
     pred_labels, pred_probs = model.predict_class(X)
@@ -185,12 +198,17 @@ def predict_category():
         for idx in top_3_indices
     ]
 
-    # Получить название category
-    category_name = to_label.get(pred_label, f'Category_{pred_label}')
+    category_path = to_label.get(pred_label, f'Category_{pred_label}')
+    
+    hierarchy = [level.strip() for level in category_path.split('/')]
+    category_name = hierarchy[-1] if hierarchy else category_path
 
     return json.dumps({
         'product_name': product_name,
+        'marketplace': marketplace,
         'category': category_name,
+        'category_path': category_path,
+        'hierarchy': hierarchy,
         'confidence': confidence,
         'top_3': top_3
     }, ensure_ascii=False, indent=2), 200
@@ -199,19 +217,23 @@ def predict_category():
 @api_bp.route("/predict_category_from_file", methods=["POST"])
 @jwt_required()
 def predict_category_from_file():
-    from models.autoencoder_model import AutoencoderDL
-
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
 
         file = request.files['file']
+        marketplace = request.form.get('marketplace', 'wildberries').strip().lower()  # Получаем из form-data
 
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
 
         if not file.filename.endswith('.csv'):
             return jsonify({'error': 'Only CSV files are supported'}), 400
+
+        # Валидация маркетплейса
+        valid_marketplaces = ['wildberries', 'ozon', 'yandex_market']
+        if marketplace not in valid_marketplaces:
+            return jsonify({'error': f'Неверный маркетплейс. Доступные: {", ".join(valid_marketplaces)}'}), 400
 
         filename = secure_filename(file.filename)
         temp_path = os.path.join(Config.UPLOAD_FOLDER, filename)
@@ -228,7 +250,8 @@ def predict_category_from_file():
 
         # Очищаем данные
         df = df[df['product_name'].notna()]
-        df['product_name'] = df['product_name'].astype(str).str.strip()
+        df['product_name'] = df['product_name'].astype(str).str.lower().str.strip()
+        df['product_name'] = df['product_name'].str.replace(r'\s+', ' ', regex=True)  # множественные пробелы -> один
         df = df[df['product_name'] != '']
 
         if df.empty:
@@ -238,19 +261,28 @@ def predict_category_from_file():
         from training.processed import load_preprocessing_objects
         from models.autoencoder_model import AutoencoderDL
         
-        vectorizer, to_id, to_label = load_preprocessing_objects(Config.MODELS_BIN)
+        # Путь к модели для конкретного маркетплейса
+        model_dir = os.path.join(Config.MODELS_BIN, marketplace)
+        vectorizer, to_id, to_label = load_preprocessing_objects(model_dir)
         num_classes = len(to_id)
 
         # Получаем размерность из первого примера
         sample_X = vectorizer.transform([df['product_name'].iloc[0]]).toarray()
         input_dim = sample_X.shape[1]
         
-        # Путь к модели - gunicorn запускается с --chdir src, рабочая директория /app/src
-        # Пробуем разные варианты путей
+        # Определяем bottleneck_dim
+        bottleneck_dims = {
+            'wildberries': 128,
+            'ozon': 128,
+            'yandex_market': 256
+        }
+        bottleneck_dim = bottleneck_dims[marketplace]
+        
+        # Путь к модели
         possible_paths = [
-            os.path.join(Config.MODELS_BIN, 'classifier.h5'),  # "src/data/models_bin/classifier.h5"
-            os.path.join(Config.MODELS_BIN.replace('src/', ''), 'classifier.h5'),  # "data/models_bin/classifier.h5"
-            os.path.join('backend', Config.MODELS_BIN, 'classifier.h5'),  # "backend/src/data/models_bin/classifier.h5"
+            os.path.join(model_dir, 'classifier.h5'),
+            os.path.join(model_dir.replace('src/', ''), 'classifier.h5'),
+            os.path.join('backend', model_dir, 'classifier.h5'),
         ]
         
         classifier_path = None
@@ -260,10 +292,10 @@ def predict_category_from_file():
                 break
         
         if not classifier_path:
-            return jsonify({'error': f'Не найдена модель classifier.h5. Пробовали пути: {possible_paths}'}), 500
+            return jsonify({'error': f'Не найдена модель для маркетплейса {marketplace}. Пробовали пути: {possible_paths}'}), 500
         
-        # Загружаем модель напрямую
-        model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=64, num_classes=num_classes)
+        # Загружаем модель
+        model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=bottleneck_dim, num_classes=num_classes)
         model.load_classifier(classifier_path)
 
         results = []
@@ -274,7 +306,11 @@ def predict_category_from_file():
 
                 pred_label = pred_labels[0]
                 confidence = float(pred_probs[0].max())
-                category_name = to_label.get(pred_label, f'Category_{pred_label}')
+                category_path = to_label.get(pred_label, f'Category_{pred_label}')
+
+                # Разбираем путь на уровни иерархии
+                hierarchy = [level.strip() for level in category_path.split('/')]
+                category_name = hierarchy[-1] if hierarchy else category_path
 
                 # Получаем топ-3
                 top_3_indices = pred_probs[0].argsort()[-3:][::-1]
@@ -289,6 +325,8 @@ def predict_category_from_file():
                 results.append({
                     'product_name': product_name,
                     'category': category_name,
+                    'category_path': category_path,
+                    'hierarchy': hierarchy,
                     'confidence': (confidence * 100),
                     'top_3': top_3
                 })
@@ -310,6 +348,7 @@ def predict_category_from_file():
             pass
 
         return jsonify({
+            'marketplace': marketplace,
             'results': results,
             'total': len(results),
             'success': len([r for r in results if 'error' not in r])

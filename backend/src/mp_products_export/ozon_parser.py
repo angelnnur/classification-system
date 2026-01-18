@@ -1,155 +1,201 @@
 """
-Парсер для сбора данных о товарах с Ozon
+Парсер для сбора товаров и дерево категорий с Ozon
 """
 import requests
+import json
 import time
 import pandas as pd
-from typing import List, Dict
-import os
+from typing import List, Dict, Optional
+from ..config import Config
 
 
 class OzonParser:
-    """
-    Класс для парсинга товаров с Ozon
-    
-    Ozon предоставляет API для партнеров, но для публичного доступа
-    может потребоваться веб-скрапинг
-    """
-    
-    def __init__(self, api_key: str = None, client_id: str = None):
-        """
-        :param api_key: API ключ для Ozon (если есть доступ к Partner API)
-        :param client_id: Client ID для Ozon API
-        """
-        self.api_key = api_key
-        self.client_id = client_id
-        self.base_url = "https://www.ozon.ru"
-        self.api_url = "https://api-seller.ozon.ru" if api_key else None
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Client-Id': self.client_id if self.client_id else '',
-            'Api-Key': self.api_key if self.api_key else ''
-        }
-    
-    def get_products_by_category(self, category_id: str, max_products: int = 1000) -> List[Dict]:
-        """
-        Получить товары из категории
+    def __init__(self, api_keys: Dict[str, Dict[str, str]] = None):
+        """Инициализация парсера Ozon"""
         
-        :param category_id: ID категории на Ozon
-        :param max_products: Максимальное количество товаров
-        :return: Список словарей с данными о товарах
-        """
-        products = []
-        
-        if self.api_key and self.client_id:
-            products = self._fetch_via_api(category_id, max_products)
-        else:
-            products = self._fetch_via_scraping(category_id, max_products)
-        
-        return products
-    
-    def _fetch_via_api(self, category_id: str, max_products: int) -> List[Dict]:
-        """
-        Получение данных через Ozon Partner API
-        """
-        products = []
-        
-        try:
-            # Пример запроса к Ozon Partner API
-            # Документация: https://docs.ozon.ru/api/seller/
-            response = requests.post(
-                f"{self.api_url}/v2/product/list",
-                json={
-                    "filter": {
-                        "category_id": category_id,
-                        "visibility": "ALL"
-                    },
-                    "limit": min(max_products, 1000),
-                    "offset": 0
+        if not api_keys:
+            api_keys = {
+                "mgt": {
+                    "api_key": Config.OZON_MGT_API_KEY,
+                    "client_id": Config.OZON_MGT_CLIENT_ID
                 },
-                headers=self.headers,
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                for item in data.get('result', {}).get('items', []):
-                    products.append({
-                        'product_name': item.get('name', '').strip(),
-                        'category': item.get('category_name', '').strip(),
-                        'marketplace': 'ozon'
-                    })
-        except Exception as e:
-            print(f"⚠️ Ошибка при получении данных через API: {e}")
+                "kgt": {
+                    "api_key": Config.OZON_KGT_API_KEY,
+                    "client_id": Config.OZON_KGT_CLIENT_ID
+                }
+            }
         
-        return products
+        if not api_keys.get("mgt", {}).get("api_key") and not api_keys.get("kgt", {}).get("api_key"):
+            raise ValueError("API ключи не указаны! Установите переменные окружения OZON_MGT_API_KEY, OZON_MGT_CLIENT_ID, OZON_KGT_API_KEY, OZON_KGT_CLIENT_ID в .env файле или передайте в конструктор")
+        
+        self.api_keys = api_keys
+        self.url = 'https://api-seller.ozon.ru'
     
-    def _fetch_via_scraping(self, category_url: str, max_products: int) -> List[Dict]:
-        """
-        Получение данных через веб-скрапинг Ozon
-        """
+    def _get_products(self, max_products: Optional[int] = None) -> List[Dict]:
+        """Получение списка товаров"""
+        limit = 1000
         products = []
+
+        for mp_type in self.api_keys:
+            if not self.api_keys[mp_type].get("api_key"):
+                continue
+                
+            next = True
+            total = None
+            last_id = ""
         
-        try:
-            from bs4 import BeautifulSoup
+            headers = {
+                'Client-Id': self.api_keys[mp_type]["client_id"],
+                'Api-Key': self.api_keys[mp_type]["api_key"]
+            }
             
-            response = requests.get(category_url, headers=self.headers, timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
+            while next:
+                body = {
+                    "limit": limit,
+                    "last_id": last_id,
+                    "filter": {}
+                }
                 
-                # Селекторы для Ozon (нужно уточнить актуальные)
-                product_cards = soup.find_all('div', {'data-widget': 'searchResultsV2'})
+                response = requests.post(
+                    url=f"{self.url}/v4/product/info/attributes",
+                    headers=headers,
+                    data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                    timeout=300
+                )
                 
-                for card in product_cards[:max_products]:
-                    # Извлекаем название и категорию
-                    product_name_elem = card.find('span', class_='tsBodyL')
-                    category_elem = card.find('a', class_='category-link')
+                if response.status_code != 200:
+                    raise RuntimeError(
+                        f"Ошибка подключения к API! Код: {response.status_code}. Текст: {response.text}"
+                    )
+                
+                res = response.json()
+                
+                last_id = res.get("last_id", "")
+                res_total = res.get("total", 0)
+
+                for it in res.get("result", []):
+                    if max_products and len(products) >= max_products:
+                        next = False
+                        break
                     
-                    if product_name_elem:
+                    product_name = it.get("name", "").strip()
+                    category_id = it.get("description_category_id")
+                    
+                    if product_name:
                         products.append({
-                            'product_name': product_name_elem.get_text().strip(),
-                            'category': category_elem.get_text().strip() if category_elem else 'Unknown',
-                            'marketplace': 'ozon'
+                            "sku": it.get("sku"),
+                            "product_name": product_name,
+                            "category_id": category_id
                         })
-        except Exception as e:
-            print(f"⚠️ Ошибка при скрапинге: {e}")
+                
+                if total is None:
+                    total = res_total or 0
+
+                total -= limit
+
+                if total < 0:
+                    next = False
+                
+                if next:
+                    time.sleep(0.3)
         
         return products
     
-    def collect_all_categories(self, categories: List[str], max_per_category: int = 500) -> pd.DataFrame:
-        """
-        Собрать товары из нескольких категорий
-        """
-        all_products = []
+    def _get_category_map(self) -> Dict[int, Dict[str, str]]:
+        """Получение категорий"""
+        headers = None
+        for mp_type in self.api_keys:
+            if self.api_keys[mp_type].get("api_key"):
+                headers = {
+                    'Client-Id': self.api_keys[mp_type]["client_id"],
+                    'Api-Key': self.api_keys[mp_type]["api_key"]
+                }
+                break
         
-        for category in categories:
-            print(f"📦 Собираю товары из категории Ozon: {category}")
-            products = self.get_products_by_category(category, max_per_category)
-            all_products.extend(products)
-            print(f"✅ Собрано {len(products)} товаров")
-            time.sleep(2)
+        if not headers:
+            raise ValueError("Нет доступных API ключей для получения категорий")
         
-        df = pd.DataFrame(all_products)
+        response = requests.post(
+            url=f"{self.url}/v1/description-category/tree",
+            headers=headers,
+            timeout=300
+        )
+        
+        if response.status_code != 200:
+            raise RuntimeError(f"Ошибка при получении категорий! Код: {response.status_code}")
+        
+        res = response.json()
+        cat_tree = self._get_category_path(res)
+        
+        return cat_tree
+    
+    def _get_category_path(self, categories: Dict) -> Dict[int, str]:
+        """Построение дерева категорий рекурсией"""
+        cat_tree = {}
+
+        def recurse_cat(it, path):
+            cat_id = it.get("description_category_id")
+
+            if cat_id is None:
+                return
+
+            cat_name = it.get("category_name")
+            current_path = f"{path} / {cat_name}" if path else cat_name
+
+            cat_tree[cat_id] = {
+                "name": cat_name,
+                "path": current_path.lstrip(" / ")
+            }
+
+            for child in it.get("children", []):
+                recurse_cat(child, current_path)
+
+        for it in categories.get("result", []):
+            recurse_cat(it, "")
+
+        return cat_tree
+    
+    def collect_all_products(self, max_products: Optional[int] = None) -> pd.DataFrame:
+        """Сбор товаров и их категорий"""
+        products = self._get_products(max_products)
+        
+        if not products:
+            return pd.DataFrame(columns=['product_name', 'category'])
+        
+        cat_map = self._get_category_map()
+        
+        result = []
+        for prod in products:
+            category_id = prod.get('category_id')
+            cat_info = cat_map.get(category_id, {"name": "Неизвестная категория", "path": "Неизвестная категория"})
+            category_name = cat_info.get("name", "Неизвестная категория")
+            category_path = cat_info.get("path", "Неизвестная категория")
+            
+            result.append({
+                'sku': prod['sku'],
+                'product_name': prod['product_name'],
+                'category_id': category_id,
+                'category_name': category_name,
+                'category_path': category_path
+            })
+        
+        df = pd.DataFrame(result)
+        
         return df
     
     def save_to_csv(self, df: pd.DataFrame, output_path: str):
-        """Сохранить данные в CSV"""
+        """Сохранение данных в CSV файл"""
+        import os
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         df.to_csv(output_path, index=False, encoding='utf-8')
-        print(f"💾 Данные сохранены в {output_path}")
-
 
 if __name__ == "__main__":
-    parser = OzonParser()
-    
-    categories = [
-        "https://www.ozon.ru/category/smartfony-15502/",
-        "https://www.ozon.ru/category/noutbuki-11801/",
-        # ... другие категории
-    ]
-    
-    df = parser.collect_all_categories(categories, max_per_category=500)
-    parser.save_to_csv(df, "data/raw/ozon_products.csv")
-    
-    print(f"✅ Всего собрано {len(df)} товаров")
-
+    try:
+        parser = OzonParser()
+        df = parser.collect_all_products(max_products=None)
+        parser.save_to_csv(df, "src/data/raw/ozon_products_list.csv")
+        print(f"✅ Готово! Собрано: {len(df)} товаров")
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+        import traceback
+        traceback.print_exc()

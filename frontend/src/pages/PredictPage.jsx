@@ -5,6 +5,7 @@ import '../styles/PredictPage.css';
 
 const PredictPage = () => {
   const [productName, setProductName] = useState('');
+  const [marketplace, setMarketplace] = useState('wildberries');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -26,10 +27,13 @@ const PredictPage = () => {
     setResults([]);
     
     try {
-      const data = await classification.classificationProduct(productName);
+      const data = await classification.classificationProduct(productName, marketplace);
       setResults([{
         product_name: data.product_name,
-        category: data.category,
+        category: data.category || data.category_name,
+        category_path: data.category_path,
+        hierarchy: data.hierarchy,
+        marketplace: data.marketplace,
         confidence: (data.confidence * 100).toFixed(2),
         top_3: data.top_3
       }]);
@@ -55,7 +59,7 @@ const PredictPage = () => {
     setResults([]);
 
     try {
-      const data = await classification.classificationFromFile(file);
+      const data = await classification.classificationFromFile(file, marketplace);
       setResults(data.results || []);
       setUploadProgress(100);
     } catch (err) {
@@ -69,10 +73,11 @@ const PredictPage = () => {
     if (results.length === 0) return;
 
     const csv = [
-      ['Товар', 'Категория', 'Уверенность (%)'].join(','),
+      ['Товар', 'Категория', 'Путь категории', 'Уверенность (%)'].join(','),
       ...results.map(r => [
         `"${r.product_name}"`,
-        `"${r.category}"`,
+        `"${r.category || r.category_name || ''}"`,
+        `"${r.category_path || ''}"`,
         r.confidence
       ].join(','))
     ].join('\n');
@@ -139,6 +144,20 @@ const PredictPage = () => {
             </div>
             
             <div className="card-body">
+              <div className="form-group">
+                <label className="form-label">Выберите маркетплейс</label>
+                <select
+                  className="form-input"
+                  value={marketplace}
+                  onChange={(e) => setMarketplace(e.target.value)}
+                  disabled={loading}
+                >
+                  <option value="wildberries">Wildberries</option>
+                  <option value="ozon">Ozon</option>
+                  <option value="yandex_market">Яндекс Маркет</option>
+                </select>
+              </div>
+
               <div className="form-group">
                 <label className="form-label">Введите название товара</label>
                 <div className="flex gap-md">
@@ -215,6 +234,7 @@ const PredictPage = () => {
                     <tr>
                       <th>Товар</th>
                       <th>Категория</th>
+                      <th>Путь категории</th>
                       <th>Уверенность</th>
                       <th>Топ-3</th>
                     </tr>
@@ -225,8 +245,20 @@ const PredictPage = () => {
                         <td className="truncate">{result.product_name}</td>
                         <td>
                           <span className="badge badge-primary">
-                            {result.category}
+                            {result.category || result.category_name}
                           </span>
+                        </td>
+                        <td className="text-secondary text-xs">
+                          {result.category_path ? (
+                            <div className="category-path">
+                              {result.hierarchy?.map((level, i) => (
+                                <span key={i}>
+                                  {level}
+                                  {i < result.hierarchy.length - 1 && ' / '}
+                                </span>
+                              )) || result.category_path}
+                            </div>
+                          ) : '-'}
                         </td>
                         <td>
                           <span className="confidence-score">
