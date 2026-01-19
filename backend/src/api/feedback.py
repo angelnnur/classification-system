@@ -61,10 +61,45 @@ def correct_category():
         feedback_list.append(correction)
         save_feedback(feedback_list)
         
-        return jsonify({
-            'message': 'Исправление сохранено',
-            'correction_id': correction['id']
-        }), 200
+        # Автоматическое переобучение в фоне (если есть новые исправления)
+        try:
+            # Проверяем количество неиспользованных исправлений
+            unused_count = sum(1 for f in feedback_list 
+                             if f.get('marketplace') == marketplace 
+                             and not f.get('used_for_training', False))
+            
+            # Если накопилось >= 10 исправлений, запускаем переобучение
+            if unused_count >= 10:
+                import threading
+                from training.retrain_with_corrections import retrain_with_corrections
+                
+                def retrain_async():
+                    try:
+                        retrain_with_corrections(marketplace)
+                    except Exception as e:
+                        print(f"Ошибка при автоматическом переобучении: {e}")
+                
+                thread = threading.Thread(target=retrain_async, daemon=True)
+                thread.start()
+                
+                return jsonify({
+                    'message': 'Исправление сохранено',
+                    'correction_id': correction['id'],
+                    'note': f'Автоматическое переобучение запущено ({unused_count} исправлений)'
+                }), 200
+            else:
+                return jsonify({
+                    'message': 'Исправление сохранено',
+                    'correction_id': correction['id'],
+                    'note': f'Накоплено {unused_count}/10 исправлений для автоматического переобучения'
+                }), 200
+        except Exception as e:
+            # Если переобучение не удалось, просто сохраняем исправление
+            return jsonify({
+                'message': 'Исправление сохранено',
+                'correction_id': correction['id'],
+                'note': f'Ошибка при попытке переобучения: {str(e)}'
+            }), 200
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
