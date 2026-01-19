@@ -3,9 +3,97 @@ import { useNavigate } from 'react-router-dom';
 import { classification } from '../services/classification';
 import '../styles/PredictPage.css';
 
-// Простой компонент для исправления категории
-const CategoryCorrectionModal = ({ product, onSave, onClose }) => {
+// Компонент для исправления категории с выбором из дерева
+const CategoryCorrectionModal = ({ product, marketplace, onSave, onClose }) => {
   const [correctedCategory, setCorrectedCategory] = useState('');
+  const [categoryTree, setCategoryTree] = useState(null);
+  const [selectedPath, setSelectedPath] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  
+  React.useEffect(() => {
+    // Загрузить дерево категорий
+    classification.getCategoryTree(marketplace)
+      .then(data => {
+        setCategoryTree(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError('Не удалось загрузить дерево категорий');
+        setLoading(false);
+      });
+  }, [marketplace]);
+  
+  const handleCategorySelect = (categoryName, fullPath, fullPathString) => {
+    setCorrectedCategory(categoryName);
+    setSelectedPath(fullPath);
+    // Сохраняем полный путь для отправки на сервер
+    if (fullPathString) {
+      setCorrectedCategory(fullPathString);
+    }
+  };
+  
+  const renderCategoryTree = (tree, level = 0, path = []) => {
+    if (!tree || !tree.categories) return null;
+    
+    // Группируем по родителям
+    const rootCategories = tree.categories.filter(cat => cat.level === 0);
+    const categoriesByParent = {};
+    
+    tree.categories.forEach(cat => {
+      const parent = cat.parent || 'root';
+      if (!categoriesByParent[parent]) {
+        categoriesByParent[parent] = [];
+      }
+      categoriesByParent[parent].push(cat);
+    });
+    
+    const renderNode = (category, currentPath = []) => {
+      const newPath = [...currentPath, category.name];
+      const hasChildren = category.children && category.children.length > 0;
+      const fullPathString = category.full_path || newPath.join('/');
+      const isSelected = selectedPath.join('/') === newPath.join('/') || correctedCategory === fullPathString;
+      
+      return (
+        <div key={`${category.name}-${category.level}`} style={{ marginLeft: `${category.level * 20}px`, marginTop: '4px' }}>
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              padding: '4px 8px',
+              cursor: 'pointer',
+              backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
+              borderRadius: '4px',
+              transition: 'background-color 0.2s'
+            }}
+            onClick={() => handleCategorySelect(category.name, newPath, fullPathString)}
+            onMouseEnter={(e) => {
+              if (!isSelected) e.currentTarget.style.backgroundColor = '#f5f5f5';
+            }}
+            onMouseLeave={(e) => {
+              if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            {hasChildren && <span style={{ marginRight: '8px' }}>📁</span>}
+            {!hasChildren && <span style={{ marginRight: '8px' }}>📄</span>}
+            <span>{category.name}</span>
+            {isSelected && <span style={{ marginLeft: '8px', color: 'green', fontWeight: 'bold' }}>✓</span>}
+          </div>
+          {hasChildren && categoriesByParent[category.name] && (
+            <div style={{ marginLeft: '20px' }}>
+              {categoriesByParent[category.name].map(child => renderNode(child, newPath))}
+            </div>
+          )}
+        </div>
+      );
+    };
+    
+    return (
+      <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #ddd', padding: '12px', borderRadius: '8px' }}>
+        {rootCategories.map(cat => renderNode(cat))}
+      </div>
+    );
+  };
   
   const handleSave = () => {
     if (correctedCategory.trim()) {
@@ -16,23 +104,45 @@ const CategoryCorrectionModal = ({ product, onSave, onClose }) => {
   
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
         <h3>Исправить категорию</h3>
         <p><strong>Товар:</strong> {product.product_name}</p>
         <p><strong>Предсказано:</strong> {product.category}</p>
-        <div className="form-group">
-          <label>Правильная категория:</label>
-          <input
-            type="text"
-            className="form-input"
-            value={correctedCategory}
-            onChange={(e) => setCorrectedCategory(e.target.value)}
-            placeholder="Введите правильную категорию"
-            autoFocus
-          />
-        </div>
+        
+        {loading && <p>Загрузка дерева категорий...</p>}
+        {error && <p style={{ color: 'red' }}>{error}</p>}
+        
+        {categoryTree && (
+          <>
+            <div className="form-group">
+              <label>Выберите правильную категорию из дерева:</label>
+              {renderCategoryTree(categoryTree)}
+            </div>
+            
+            {correctedCategory && (
+              <div style={{ marginTop: '12px', padding: '8px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
+                <strong>Выбрано:</strong> {selectedPath.join(' / ')}
+              </div>
+            )}
+          </>
+        )}
+        
+        {!categoryTree && !loading && (
+          <div className="form-group">
+            <label>Правильная категория (введите вручную):</label>
+            <input
+              type="text"
+              className="form-input"
+              value={correctedCategory}
+              onChange={(e) => setCorrectedCategory(e.target.value)}
+              placeholder="Введите правильную категорию"
+              autoFocus
+            />
+          </div>
+        )}
+        
         <div className="modal-actions">
-          <button className="btn btn-primary" onClick={handleSave}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={!correctedCategory.trim()}>
             Сохранить
           </button>
           <button className="btn btn-secondary" onClick={onClose}>
@@ -144,7 +254,7 @@ const PredictPage = () => {
 
   const handleCorrectCategory = async (product, correctedCategory) => {
     try {
-      await classification.correctCategory(
+      const response = await classification.correctCategory(
         product.product_name,
         marketplace,
         product.category || product.category_name,
@@ -152,10 +262,17 @@ const PredictPage = () => {
         parseFloat(product.confidence) / 100
       );
       
+      // Показываем сообщение с информацией о переобучении
+      const message = response.note 
+        ? `Категория исправлена! ${response.note}`
+        : 'Категория успешно исправлена и отправлена для переобучения!';
+      
+      alert(message);
+      
       // Обновить результат
       setResults(results.map(r => 
         r.product_name === product.product_name
-          ? { ...r, category: correctedCategory, category_name: correctedCategory }
+          ? { ...r, category: correctedCategory, category_name: correctedCategory, corrected: true }
           : r
       ));
       
@@ -367,6 +484,7 @@ const PredictPage = () => {
       {correctingProduct && (
         <CategoryCorrectionModal
           product={correctingProduct}
+          marketplace={marketplace}
           onSave={handleCorrectCategory}
           onClose={() => setCorrectingProduct(null)}
         />

@@ -30,5 +30,9 @@ export const classification = {
             confidence: confidence
         });
         return response.data;
+    },
+    getCategoryTree: async (marketplace = 'wildberries') => {
+        const response = await api.get(`/categories/tree?marketplace=${marketplace}`);
+        return response.data;
     }
 }
