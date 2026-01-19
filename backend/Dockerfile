@@ -31,6 +31,6 @@ ENV FLASK_APP=src/main.py
 EXPOSE ${PORT:-5001}
 
 # Команда запуска через gunicorn
-# preload=False - не загружать приложение до форка workers (быстрее старт)
+# Без --preload для быстрого старта (не загружать приложение до форка workers)
 # timeout увеличен для загрузки моделей при первом запросе
-CMD sh -c 'gunicorn --bind 0.0.0.0:${PORT:-5001} --workers 1 --threads 2 --timeout 300 --graceful-timeout 30 --preload=False --chdir src main:app'
+CMD sh -c 'gunicorn --bind 0.0.0.0:${PORT:-5001} --workers 1 --threads 2 --timeout 300 --graceful-timeout 30 --chdir src main:app'
