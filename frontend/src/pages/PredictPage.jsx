@@ -3,6 +3,47 @@ import { useNavigate } from 'react-router-dom';
 import { classification } from '../services/classification';
 import '../styles/PredictPage.css';
 
+// Простой компонент для исправления категории
+const CategoryCorrectionModal = ({ product, onSave, onClose }) => {
+  const [correctedCategory, setCorrectedCategory] = useState('');
+  
+  const handleSave = () => {
+    if (correctedCategory.trim()) {
+      onSave(product, correctedCategory);
+      onClose();
+    }
+  };
+  
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <h3>Исправить категорию</h3>
+        <p><strong>Товар:</strong> {product.product_name}</p>
+        <p><strong>Предсказано:</strong> {product.category}</p>
+        <div className="form-group">
+          <label>Правильная категория:</label>
+          <input
+            type="text"
+            className="form-input"
+            value={correctedCategory}
+            onChange={(e) => setCorrectedCategory(e.target.value)}
+            placeholder="Введите правильную категорию"
+            autoFocus
+          />
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-primary" onClick={handleSave}>
+            Сохранить
+          </button>
+          <button className="btn btn-secondary" onClick={onClose}>
+            Отмена
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const PredictPage = () => {
   const [productName, setProductName] = useState('');
   const [marketplace, setMarketplace] = useState('wildberries');
@@ -11,6 +52,7 @@ const PredictPage = () => {
   const [error, setError] = useState('');
   const [csvFile, setCsvFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [correctingProduct, setCorrectingProduct] = useState(null);
   const navigate = useNavigate();
 
   const username = localStorage.getItem('username');
@@ -98,6 +140,29 @@ const PredictPage = () => {
   const handleLogout = () => {
     classification.logout();
     navigate('/login');
+  };
+
+  const handleCorrectCategory = async (product, correctedCategory) => {
+    try {
+      await classification.correctCategory(
+        product.product_name,
+        marketplace,
+        product.category || product.category_name,
+        correctedCategory,
+        parseFloat(product.confidence) / 100
+      );
+      
+      // Обновить результат
+      setResults(results.map(r => 
+        r.product_name === product.product_name
+          ? { ...r, category: correctedCategory, category_name: correctedCategory }
+          : r
+      ));
+      
+      alert('Категория исправлена! Модель будет переобучена с этим исправлением.');
+    } catch (err) {
+      alert('Ошибка при сохранении исправления: ' + (err.response?.data?.error || err.message));
+    }
   };
 
   return (
@@ -244,9 +309,18 @@ const PredictPage = () => {
                       <tr key={idx}>
                         <td className="truncate">{result.product_name}</td>
                         <td>
-                          <span className="badge badge-primary">
-                            {result.category || result.category_name}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span className="badge badge-primary">
+                              {result.category || result.category_name}
+                            </span>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              onClick={() => setCorrectingProduct(result)}
+                              style={{ fontSize: '0.75rem', padding: '2px 8px', width: 'fit-content' }}
+                            >
+                              ✏️ Исправить
+                            </button>
+                          </div>
                         </td>
                         <td className="text-secondary text-xs">
                           {result.category_path ? (
@@ -288,6 +362,15 @@ const PredictPage = () => {
           )}
         </div>
       </div>
+
+      {/* Модальное окно для исправления категории */}
+      {correctingProduct && (
+        <CategoryCorrectionModal
+          product={correctingProduct}
+          onSave={handleCorrectCategory}
+          onClose={() => setCorrectingProduct(null)}
+        />
+      )}
     </div>
   );
 };
