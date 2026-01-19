@@ -30,5 +30,7 @@ ENV FLASK_APP=src/main.py
 # Открытие порта (Render.com использует переменную PORT)
 EXPOSE ${PORT:-5001}
 
-# Команда запуска через gunicorn с увеличенным таймаутом для загрузки модели
-CMD sh -c 'gunicorn --bind 0.0.0.0:${PORT:-5001} --workers 1 --threads 2 --timeout 300 --chdir src main:app'
+# Команда запуска через gunicorn
+# preload=False - не загружать приложение до форка workers (быстрее старт)
+# timeout увеличен для загрузки моделей при первом запросе
+CMD sh -c 'gunicorn --bind 0.0.0.0:${PORT:-5001} --workers 1 --threads 2 --timeout 300 --graceful-timeout 30 --preload=False --chdir src main:app'
