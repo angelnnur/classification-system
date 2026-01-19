@@ -61,6 +61,9 @@ def correct_category():
         feedback_list.append(correction)
         save_feedback(feedback_list)
         
+        # Получаем marketplace из данных
+        marketplace = data['marketplace']
+        
         # Автоматическое переобучение в фоне (если есть новые исправления)
         try:
             # Проверяем количество неиспользованных исправлений
