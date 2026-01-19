@@ -20,5 +20,15 @@ export const classification = {
 
         const response = await api.post('/predict_category_from_file', formData, {headers: { 'Content-Type': 'multipart/form-data' }});
         return response.data;
+    },
+    correctCategory: async (productName, marketplace, predictedCategory, correctedCategory, confidence = 0) => {
+        const response = await api.post('/feedback/correct', {
+            product_name: productName,
+            marketplace: marketplace,
+            predicted_category: predictedCategory,
+            corrected_category: correctedCategory,
+            confidence: confidence
+        });
+        return response.data;
     }
 }

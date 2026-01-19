@@ -3,6 +3,7 @@ from flask import Flask
 from flask_cors import CORS
 from config import Config
 from api.routes import api_bp
+from api.feedback import feedback_bp
 from flask_jwt_extended import JWTManager
 from database.models import db
 
@@ -30,6 +31,7 @@ def create_app():
     JWTManager(app)
 
     app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(feedback_bp, url_prefix='/api')
 
     @app.route('/health')
     def health():
