@@ -8,13 +8,13 @@ class Config:
     DEBUG = os.getenv('FLASK_DEBUG', 'False')
     HOST = os.getenv('FLASK_HOST', '0.0.0.0')
     PORT = int(os.getenv('FLASK_PORT', 5001))
-    DB_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:1234@localhost:5432/product_classifier')
-    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+    DB_URL = os.getenv('DATABASE_URL', '')
+    SECRET_KEY = os.getenv('SECRET_KEY', '')
 
     SQLALCHEMY_DATABASE_URI = DB_URL
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-change-in-production")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")
 
     UPLOAD_FOLDER = "src/data/uploads"
     PROCESSED_FOLDER = "src/data/processed"
