@@ -141,5 +141,38 @@
     "confidence": 0.253,
     "timestamp": "2026-02-03T23:02:45.714446",
     "used_for_training": false
+  },
+  {
+    "id": 14,
+    "user_id": "10",
+    "product_name": "звуковая карта creative usb sound blaster play! 3 2.0 ret",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Проигрыватели и плееры",
+    "confidence": 0.4575152099132538,
+    "timestamp": "2026-02-04T13:32:43.002811",
+    "used_for_training": false
+  },
+  {
+    "id": 15,
+    "user_id": "10",
+    "product_name": "звуковая карта creative usb sound blaster play! 3 2.0 ret",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Видеокарты и графические ускорители",
+    "confidence": 0.4575152099132538,
+    "timestamp": "2026-02-04T13:33:15.364224",
+    "used_for_training": false
+  },
+  {
+    "id": 16,
+    "user_id": "10",
+    "product_name": "звуковая карта creative usb sound blaster play! 3 2.0 ret",
+    "marketplace": "ozon",
+    "predicted_category": "Видеокарты и графические ускорители",
+    "corrected_category": "Электроника / Акустика и колонки",
+    "confidence": 0.4575152099132538,
+    "timestamp": "2026-02-04T13:37:18.161248",
+    "used_for_training": false
   }
 ]

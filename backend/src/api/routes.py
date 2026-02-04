@@ -211,9 +211,9 @@ def predict_category():
         {'category': to_label.get(idx, f'Category_{idx}'), 'confidence': float(pred_probs[0][idx])}
         for idx in pred_probs[0].argsort()[-3:][::-1]
     ]
-    top_3 = [c for c in top_3_raw if c['confidence'] >= 0.5]
+    top_3 = [c for c in top_3_raw if c['confidence'] >= 0.45]
 
-    if confidence < 0.5:
+    if confidence < 0.45:
         category_name = 'Другая категория'
         category_path = 'Другая категория'
         hierarchy = ['Другая категория']
@@ -371,9 +371,9 @@ def predict_category_from_file():
                     {'category': to_label.get(int(idx), f'Category_{int(idx)}'), 'confidence': float(pred_probs[0][int(idx)])}
                     for idx in pred_probs[0].argsort()[-3:][::-1]
                 ]
-                top_3 = [c for c in top_3_raw if c['confidence'] >= 0.5]
+                top_3 = [c for c in top_3_raw if c['confidence'] >= 0.45]
 
-                if confidence < 0.5:
+                if confidence < 0.45:
                     category_name = 'Другая категория'
                     category_path = 'Другая категория'
                     hierarchy = ['Другая категория']

@@ -5,7 +5,8 @@ import numpy as np
 from keras.utils import to_categorical
 import os
 from pathlib import Path
-from ..config import Config
+from src.config import Config
+    
 
 from .processed import preprocess_data, save_preprocessing_objects
 from ..models.autoencoder_model import AutoencoderDL

@@ -10,7 +10,7 @@ import os
 import numpy as np
 from pathlib import Path
 from config import Config
-from training.processed import preprocess_data, save_preprocessing_objects
+from processed import preprocess_data, save_preprocessing_objects
 from models.autoencoder_model import AutoencoderDL
 from keras.utils import to_categorical
 
@@ -190,7 +190,7 @@ def retrain_with_corrections(marketplace: str, use_fine_tuning=True, correction_
     combined_df.to_csv(temp_dataset, index=False)
     
     # 5. Предобработка
-    from src.training.train import MARKETPLACE_CONFIG
+    from train import MARKETPLACE_CONFIG
     config = MARKETPLACE_CONFIG[marketplace]
     
     print(f"\n📊 Предобработка данных...")
@@ -305,5 +305,5 @@ def retrain_with_corrections(marketplace: str, use_fine_tuning=True, correction_
 if __name__ == '__main__':
     import sys
     
-    marketplace = sys.argv[1] if len(sys.argv) > 1 else 'wildberries'
+    marketplace = sys.argv[1]
     retrain_with_corrections(marketplace)
