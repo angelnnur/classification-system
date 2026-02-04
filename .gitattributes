@@ -1,1 +1,0 @@
-backend/src/data/models_bin/yandex_market/classifier.h5 filter=lfs diff=lfs merge=lfs -text
