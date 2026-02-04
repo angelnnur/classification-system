@@ -13,6 +13,40 @@ from config import Config
 
 api_bp = Blueprint('api', __name__)
 
+VALID_MARKETPLACES = ['wildberries', 'ozon', 'yandex_market']
+BOTTLENECK_DIMS = {'wildberries': 128, 'ozon': 128, 'yandex_market': 256}
+
+
+def _load_model_for_marketplace(marketplace):
+    """Загрузить модель и preprocessing для маркетплейса. Возвращает (model, vectorizer, to_id, to_label, expected_dim)."""
+    from training.processed import load_preprocessing_objects
+    from models.autoencoder_model import AutoencoderDL
+
+    model_dir = os.path.join(Config.MODELS_BIN, marketplace)
+    vectorizer, to_id, to_label = load_preprocessing_objects(model_dir)
+    num_classes = len(to_id)
+    bottleneck_dim = BOTTLENECK_DIMS[marketplace]
+
+    possible_paths = [
+        os.path.join(model_dir, 'classifier.h5'),
+        os.path.join(model_dir.replace('src/', ''), 'classifier.h5'),
+        os.path.join('backend', model_dir, 'classifier.h5'),
+    ]
+    classifier_path = None
+    for p in possible_paths:
+        if os.path.exists(p):
+            classifier_path = p
+            break
+    if not classifier_path:
+        raise FileNotFoundError(f'Не найдена модель для маркетплейса {marketplace}')
+
+    sample_X = vectorizer.transform(['sample']).toarray()
+    input_dim = sample_X.shape[1]
+    model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=bottleneck_dim, num_classes=num_classes)
+    model.load_classifier(classifier_path)
+    expected_dim = model.classifier.input_shape[-1]
+    return model, vectorizer, to_id, to_label, expected_dim
+
 FEEDBACK_FILE = "src/data/feedback_corrections.json"
 
 
@@ -142,60 +176,28 @@ def register():
 
 
 @api_bp.route("/predict_category", methods=["POST"])
-@jwt_required(optional=True)  # Авторизация опциональна
+@jwt_required()
 def predict_category():
-    from training.processed import load_preprocessing_objects
-    from models.autoencoder_model import AutoencoderDL
-
     data = request.get_json()
     product_name = data.get('product_name', '').strip()
-    marketplace = data.get('marketplace', 'wildberries').strip().lower()  # По умолчанию wildberries
+    marketplace = data.get('marketplace', 'wildberries').strip().lower()
 
     if not product_name:
         return jsonify({'error': 'product_name не указано'}), 400
 
-    valid_marketplaces = ['wildberries', 'ozon', 'yandex_market']
-    if marketplace not in valid_marketplaces:
-        return jsonify({'error': f'Неверный маркетплейс. Доступные: {", ".join(valid_marketplaces)}'}), 400
+    if marketplace not in VALID_MARKETPLACES:
+        return jsonify({'error': f'Неверный маркетплейс. Доступные: {", ".join(VALID_MARKETPLACES)}'}), 400
 
-    product_name_normalized = product_name.lower().strip()
-    product_name_normalized = re.sub(r'\s+', ' ', product_name_normalized)
+    product_name_normalized = re.sub(r'\s+', ' ', product_name.lower().strip())
 
-    model_dir = os.path.join(Config.MODELS_BIN, marketplace)
-    vectorizer, to_id, to_label = load_preprocessing_objects(model_dir)
+    try:
+        model, vectorizer, to_id, to_label, expected_dim = _load_model_for_marketplace(marketplace)
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        return jsonify({'error': f'Ошибка загрузки модели: {str(e)}'}), 500
 
     X = vectorizer.transform([product_name_normalized]).toarray()
-    input_dim = X.shape[1]
-    num_classes = len(to_id)
-    
-
-    bottleneck_dims = {
-        'wildberries': 128,
-        'ozon': 128,
-        'yandex_market': 256
-    }
-    bottleneck_dim = bottleneck_dims[marketplace]
-    
-    possible_paths = [
-        os.path.join(model_dir, 'classifier.h5'),
-        os.path.join(model_dir.replace('src/', ''), 'classifier.h5'),
-        os.path.join('backend', model_dir, 'classifier.h5'),
-    ]
-    
-    classifier_path = None
-    for path in possible_paths:
-        if os.path.exists(path):
-            classifier_path = path
-            break
-    
-    if not classifier_path:
-        return jsonify({'error': f'Не найдена модель для маркетплейса {marketplace}. Пробовали пути: {possible_paths}'}), 500
-    
-    # Загружаем модель
-    model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=bottleneck_dim, num_classes=num_classes)
-    model.load_classifier(classifier_path)
-    # Подгоняем размер входа под сохранённую модель (если векторная форма отличается)
-    expected_dim = model.classifier.input_shape[-1]
     if X.shape[1] != expected_dim:
         if X.shape[1] > expected_dim:
             X = X[:, :expected_dim].astype(X.dtype)
@@ -211,9 +213,9 @@ def predict_category():
         {'category': to_label.get(idx, f'Category_{idx}'), 'confidence': float(pred_probs[0][idx])}
         for idx in pred_probs[0].argsort()[-3:][::-1]
     ]
-    top_3 = [c for c in top_3_raw if c['confidence'] >= 0.45]
+    top_3 = [c for c in top_3_raw if c['confidence'] >= 0.5]
 
-    if confidence < 0.45:
+    if confidence < 0.5:
         category_name = 'Другая категория'
         category_path = 'Другая категория'
         hierarchy = ['Другая категория']
@@ -238,7 +240,6 @@ def predict_category():
                             hierarchy = [category_name]
                         break
             except Exception as e:
-                print(f"⚠️ Не удалось построить дерево категорий: {e}")
                 category_path = category_name
                 hierarchy = [category_name]
         warning = None
@@ -274,10 +275,8 @@ def predict_category_from_file():
         if not file.filename.endswith('.csv'):
             return jsonify({'error': 'Only CSV files are supported'}), 400
 
-        # Валидация маркетплейса
-        valid_marketplaces = ['wildberries', 'ozon', 'yandex_market']
-        if marketplace not in valid_marketplaces:
-            return jsonify({'error': f'Неверный маркетплейс. Доступные: {", ".join(valid_marketplaces)}'}), 400
+        if marketplace not in VALID_MARKETPLACES:
+            return jsonify({'error': f'Неверный маркетплейс. Доступные: {", ".join(VALID_MARKETPLACES)}'}), 400
 
         filename = secure_filename(file.filename)
         temp_path = os.path.join(Config.UPLOAD_FOLDER, filename)
@@ -292,56 +291,19 @@ def predict_category_from_file():
         if 'product_name' not in df.columns:
             return jsonify({'error': 'CSV must have a "product_name" column'}), 400
 
-        # Очищаем данные
         df = df[df['product_name'].notna()]
         df['product_name'] = df['product_name'].astype(str).str.lower().str.strip()
-        df['product_name'] = df['product_name'].str.replace(r'\s+', ' ', regex=True)  # множественные пробелы -> один
+        df['product_name'] = df['product_name'].str.replace(r'\s+', ' ', regex=True)
         df = df[df['product_name'] != '']
-
         if df.empty:
             return jsonify({'error': 'No valid product names in file'}), 400
 
-        # Загружаем preprocessing objects
-        from training.processed import load_preprocessing_objects
-        from models.autoencoder_model import AutoencoderDL
-        
-        # Путь к модели для конкретного маркетплейса
-        model_dir = os.path.join(Config.MODELS_BIN, marketplace)
-        vectorizer, to_id, to_label = load_preprocessing_objects(model_dir)
-        num_classes = len(to_id)
-
-        # Получаем размерность из первого примера
-        sample_X = vectorizer.transform([df['product_name'].iloc[0]]).toarray()
-        input_dim = sample_X.shape[1]
-        
-        # Определяем bottleneck_dim
-        bottleneck_dims = {
-            'wildberries': 128,
-            'ozon': 128,
-            'yandex_market': 256
-        }
-        bottleneck_dim = bottleneck_dims[marketplace]
-        
-        # Путь к модели
-        possible_paths = [
-            os.path.join(model_dir, 'classifier.h5'),
-            os.path.join(model_dir.replace('src/', ''), 'classifier.h5'),
-            os.path.join('backend', model_dir, 'classifier.h5'),
-        ]
-        
-        classifier_path = None
-        for path in possible_paths:
-            if os.path.exists(path):
-                classifier_path = path
-                break
-        
-        if not classifier_path:
-            return jsonify({'error': f'Не найдена модель для маркетплейса {marketplace}. Пробовали пути: {possible_paths}'}), 500
-        
-        # Загружаем модель
-        model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=bottleneck_dim, num_classes=num_classes)
-        model.load_classifier(classifier_path)
-        expected_dim = model.classifier.input_shape[-1]
+        try:
+            model, vectorizer, to_id, to_label, expected_dim = _load_model_for_marketplace(marketplace)
+        except FileNotFoundError as e:
+            return jsonify({'error': str(e)}), 500
+        except Exception as e:
+            return jsonify({'error': f'Ошибка загрузки модели: {str(e)}'}), 500
 
         path_to_id = {}
         dataset_path = _dataset_path(marketplace)
@@ -371,9 +333,9 @@ def predict_category_from_file():
                     {'category': to_label.get(int(idx), f'Category_{int(idx)}'), 'confidence': float(pred_probs[0][int(idx)])}
                     for idx in pred_probs[0].argsort()[-3:][::-1]
                 ]
-                top_3 = [c for c in top_3_raw if c['confidence'] >= 0.45]
+                top_3 = [c for c in top_3_raw if c['confidence'] >= 0.5]
 
-                if confidence < 0.45:
+                if confidence < 0.5:
                     category_name = 'Другая категория'
                     category_path = 'Другая категория'
                     hierarchy = ['Другая категория']
@@ -496,9 +458,8 @@ def get_current_user():
 def get_category_tree():
     """Дерево категорий маркетплейса (для выбора категории на фронте)."""
     marketplace = request.args.get('marketplace', 'wildberries').strip().lower()
-    valid_marketplaces = ['wildberries', 'ozon', 'yandex_market']
-    if marketplace not in valid_marketplaces:
-        return jsonify({'error': f'Неверный маркетплейс. Доступные: {", ".join(valid_marketplaces)}'}), 400
+    if marketplace not in VALID_MARKETPLACES:
+        return jsonify({'error': f'Неверный маркетплейс. Доступные: {", ".join(VALID_MARKETPLACES)}'}), 400
     dataset_path = _dataset_path(marketplace)
     if not dataset_path.exists():
         return jsonify({'error': f'Датасет для {marketplace} не найден'}), 404

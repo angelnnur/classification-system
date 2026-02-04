@@ -5,11 +5,10 @@ import numpy as np
 from keras.utils import to_categorical
 import os
 from pathlib import Path
-from src.config import Config
-    
 
-from .processed import preprocess_data, save_preprocessing_objects
-from ..models.autoencoder_model import AutoencoderDL
+from config import Config
+from training.processed import preprocess_data, save_preprocessing_objects
+from models.autoencoder_model import AutoencoderDL
 
 MARKETPLACE_CONFIG = {
     'wildberries': {
@@ -17,21 +16,21 @@ MARKETPLACE_CONFIG = {
         'category_column': 'category_path',
         'min_samples': 10,
         'max_features': 3000,
-        'bottleneck_dim': 128
+        'bottleneck_dim': Config.MARKETPLACE_BOTTLENECK_DIMS['wildberries']
     },
     'ozon': {
         'csv_file': 'src/data/raw/ozon_products_list.csv',
         'category_column': 'category_path',
         'min_samples': 10,
         'max_features': 3000,
-        'bottleneck_dim': 64
+        'bottleneck_dim': Config.MARKETPLACE_BOTTLENECK_DIMS['ozon']
     },
     'yandex_market': {
         'csv_file': 'src/data/raw/yandex_market_products_list.csv',
         'category_column': 'category_path',
         'min_samples': 10,
         'max_features': 3000,
-        'bottleneck_dim': 256
+        'bottleneck_dim': Config.MARKETPLACE_BOTTLENECK_DIMS['yandex_market']
     }
 }
 

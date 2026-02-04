@@ -5,11 +5,9 @@ def get_params(csv_path):
     df = pd.read_csv(csv_path)
     
     df = df.drop_duplicates(subset=['product_name'])
-    
     df['product_name'] = df['product_name'].fillna('').astype(str)
     df['product_name'] = df['product_name'].str.lower().str.strip()
     df['product_name'] = df['product_name'].str.replace(r'\s+', ' ', regex=True)
-    
     df = df[df['product_name'] != '']
     df = df[df['category_path'].notna()]
 

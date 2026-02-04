@@ -27,3 +27,10 @@ class Config:
     OZON_KGT_CLIENT_ID = os.getenv("OZON_KGT_CLIENT_ID", None)
     YM_API_TOKEN=os.getenv("YM_API_TOKEN", None)
     YM_BUSINESS_ID=os.getenv("YM_BUSINESS_ID", None)
+
+    VALID_MARKETPLACES = ['wildberries', 'ozon', 'yandex_market']
+    MARKETPLACE_BOTTLENECK_DIMS = {
+        'wildberries': 128,
+        'ozon': 128,
+        'yandex_market': 256
+    }

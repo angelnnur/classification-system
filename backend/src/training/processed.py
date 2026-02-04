@@ -11,11 +11,9 @@ def preprocess_data(csv_file, min_samples_per_category=20, max_features=2000):
         raise ValueError("В файле отсутствует информация о товарах или категория!")
 
     df = df.drop_duplicates(subset=['product_name'])
-    
     df['product_name'] = df['product_name'].fillna('').astype(str)
     df['product_name'] = df['product_name'].str.lower().str.strip()
     df['product_name'] = df['product_name'].str.replace(r'\s+', ' ', regex=True)
-    
     df = df[df['product_name'] != '']
     df = df[df['category_path'].notna()]
 

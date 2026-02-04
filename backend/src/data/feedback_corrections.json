@@ -174,5 +174,49 @@
     "confidence": 0.4575152099132538,
     "timestamp": "2026-02-04T13:37:18.161248",
     "used_for_training": false
+  },
+  {
+    "id": 17,
+    "user_id": "9",
+    "product_name": "Картридж струйный HP Black Printhead (6ZA11AE), черный",
+    "marketplace": "wildberries",
+    "predicted_category": "Оргтехника/Картриджи для принтеров",
+    "corrected_category": "Оргтехника/МФУ",
+    "confidence": 1,
+    "timestamp": "2026-02-04T18:53:49.274968",
+    "used_for_training": false
+  },
+  {
+    "id": 18,
+    "user_id": "9",
+    "product_name": "Apple Macbook Air",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.187,
+    "timestamp": "2026-02-04T19:32:14.879054",
+    "used_for_training": false
+  },
+  {
+    "id": 19,
+    "user_id": "9",
+    "product_name": "Apple Macbook Air",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.187,
+    "timestamp": "2026-02-04T19:37:33.949744",
+    "used_for_training": false
+  },
+  {
+    "id": 20,
+    "user_id": "9",
+    "product_name": "Apple Macbook Air",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.187,
+    "timestamp": "2026-02-04T19:42:13.574739",
+    "used_for_training": false
   }
 ]
