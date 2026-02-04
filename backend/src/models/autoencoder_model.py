@@ -100,39 +100,6 @@ class AutoencoderDL:
         self.plot_training_history(history)
 
         return history
-    
-    def plot_training_history(self, history, save_path='backend/src/data/raw/models_bin/ozon/plt.png'):
-        import os
-        os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
-        epochs = range(1, len(history.history['loss']) + 1)
-        
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-        
-        # График 1: Функция потерь (Loss)
-        ax1.plot(epochs, history.history['loss'], 'r.', label='Обучающая выборка', markersize=8)
-        if 'val_loss' in history.history:
-            ax1.plot(epochs, history.history['val_loss'], 'g*', label='Валидационная выборка', markersize=8)
-        ax1.set_xlabel('Эпоха')
-        ax1.set_ylabel('Функция потерь (CategoricalCrossentropy)')
-        ax1.set_title('Изменение функции потерь')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        
-        # График 2: Точность (Accuracy)
-        ax2.plot(epochs, history.history['accuracy'], 'b.', label='Обучающая выборка', markersize=8)
-        if 'val_accuracy' in history.history:
-            ax2.plot(epochs, history.history['val_accuracy'], 'm*', label='Валидационная выборка', markersize=8)
-        ax2.set_xlabel('Эпоха')
-        ax2.set_ylabel('Точность (Accuracy)')
-        ax2.set_title('Изменение точности')
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-
-        plt.close()
 
     def predict_class(self, X):
         probs = self.classifier.predict(X, verbose=0)
