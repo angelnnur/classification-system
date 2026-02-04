@@ -53,23 +53,23 @@ const AdminUsersPage = () => {
 
   const validateForm = () => {
     if (!newUserForm.username.trim()) {
-      setError('Username не может быть пустым');
+      setError('❗ Username не может быть пустым');
       return false;
     }
     if (newUserForm.username.length < 3) {
-      setError('Username минимум 3 символа');
+      setError('❗ Username минимум 3 символа');
       return false;
     }
     if (!newUserForm.password) {
-      setError('Пароль не может быть пустым');
+      setError('❗ Пароль не может быть пустым');
       return false;
     }
     if (newUserForm.password.length < 6) {
-      setError('Пароль минимум 6 символов');
+      setError('❗ Пароль минимум 6 символов');
       return false;
     }
     if (newUserForm.password !== newUserForm.confirmPassword) {
-      setError('Пароли не совпадают');
+      setError('❗ Пароли не совпадают');
       return false;
     }
     return true;
@@ -90,7 +90,7 @@ const AdminUsersPage = () => {
         newUserForm.role
       );
 
-      setSuccess(`✅ Пользователь "${newUserForm.username}" успешно создан!`);
+      setSuccess(`✔️ Пользователь "${newUserForm.username}" успешно создан!`);
       setNewUserForm({ username: '', password: '', confirmPassword: '', role: 'user' });
       setShowModal(false);
       
@@ -99,7 +99,7 @@ const AdminUsersPage = () => {
         loadUsers();
       }, 2000);
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 'Ошибка при создании пользователя';
+      const errorMsg = err.response?.data?.error || '❗ Ошибка при создании пользователя';
       setError(errorMsg);
     } finally {
       setLoading(false);
@@ -113,13 +113,13 @@ const AdminUsersPage = () => {
 
     try {
       await api.delete(`/users/${userId}`);
-      setSuccess(`✅ Пользователь "${userName}" удалён!`);
+      setSuccess(`✔️ Пользователь "${userName}" удалён!`);
       setTimeout(() => {
         setSuccess('');
         loadUsers();
       }, 2000);
     } catch (err) {
-      setError('Ошибка при удалении пользователя');
+      setError('❗ Ошибка при удалении пользователя');
     }
   };
 
@@ -155,7 +155,7 @@ const AdminUsersPage = () => {
               className="btn btn-outline btn-sm"
               onClick={handleLogout}
             >
-              Выход
+             ❌ Выход
             </button>
           </div>
         </div>
@@ -165,7 +165,7 @@ const AdminUsersPage = () => {
         <div className="admin-content">
           {/* Сообщения */}
           {error && <div className="alert alert-error">⚠️ {error}</div>}
-          {success && <div className="alert alert-success">✅ {success}</div>}
+          {success && <div className="alert alert-success">{success}</div>}
 
           {/* Кнопка добавления */}
           <div className="admin-header">

@@ -19,7 +19,7 @@ const CategoryCorrectionModal = ({ product, marketplace, onSave, onClose }) => {
         setLoading(false);
       })
       .catch(err => {
-        setError('Не удалось загрузить дерево категорий');
+        setError('❗ Не удалось загрузить дерево категорий');
         setLoading(false);
       });
   }, [marketplace]);
@@ -27,7 +27,6 @@ const CategoryCorrectionModal = ({ product, marketplace, onSave, onClose }) => {
   const handleCategorySelect = (categoryName, fullPath, fullPathString) => {
     setCorrectedCategory(categoryName);
     setSelectedPath(fullPath);
-    // Сохраняем полный путь для отправки на сервер
     if (fullPathString) {
       setCorrectedCategory(fullPathString);
     }
@@ -63,6 +62,7 @@ const CategoryCorrectionModal = ({ product, marketplace, onSave, onClose }) => {
               padding: '4px 8px',
               cursor: 'pointer',
               backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
+              color: isSelected ? '#262828': '#e3f2fd',
               borderRadius: '4px',
               transition: 'background-color 0.2s'
             }}
@@ -105,7 +105,7 @@ const CategoryCorrectionModal = ({ product, marketplace, onSave, onClose }) => {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-        <h3>Исправить категорию</h3>
+        <h3>✏️ Исправить категорию</h3>
         <p><strong>Товар:</strong> {product.product_name}</p>
         <p><strong>Предсказано:</strong> {product.category}</p>
         
@@ -120,7 +120,7 @@ const CategoryCorrectionModal = ({ product, marketplace, onSave, onClose }) => {
             </div>
             
             {correctedCategory && (
-              <div style={{ marginTop: '12px', padding: '8px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
+              <div style={{ marginTop: '12px', padding: '8px', borderRadius: '4px' }}>
                 <strong>Выбрано:</strong> {selectedPath.join(' / ')}
               </div>
             )}
@@ -170,7 +170,7 @@ const PredictPage = () => {
 
   const handlePredict = async () => {
     if (!productName.trim()) {
-      setError('Введите название товара');
+      setError('❗ Введите название товара');
       return;
     }
     
@@ -190,7 +190,7 @@ const PredictPage = () => {
         top_3: data.top_3
       }]);
     } catch (err) {
-      setError(err.response?.data?.error || 'Ошибка предсказания');
+      setError(err.response?.data?.error || '❗ Ошибка предсказания');
     } finally {
       setLoading(false);
     }
@@ -201,7 +201,7 @@ const PredictPage = () => {
     if (!file) return;
 
     if (!file.name.endsWith('.csv')) {
-      setError('Пожалуйста, загрузите CSV файл');
+      setError('❗ Пожалуйста, загрузите CSV файл');
       return;
     }
 
@@ -215,7 +215,7 @@ const PredictPage = () => {
       setResults(data.results || []);
       setUploadProgress(100);
     } catch (err) {
-      setError(err.response?.data?.error || 'Ошибка при загрузке файла');
+      setError(err.response?.data?.error || '❗ Ошибка при загрузке файла');
     } finally {
       setLoading(false);
     }
@@ -262,23 +262,21 @@ const PredictPage = () => {
         parseFloat(product.confidence) / 100
       );
       
-      // Показываем сообщение с информацией о переобучении
       const message = response.note 
-        ? `Категория исправлена! ${response.note}`
-        : 'Категория успешно исправлена и отправлена для переобучения!';
+        ? `✔️ Категория исправлена! ${response.note}`
+        : '👍 Категория успешно исправлена и отправлена для переобучения!';
       
       alert(message);
       
-      // Обновить результат
       setResults(results.map(r => 
         r.product_name === product.product_name
           ? { ...r, category: correctedCategory, category_name: correctedCategory, corrected: true }
           : r
       ));
       
-      alert('Категория исправлена! Модель будет переобучена с этим исправлением.');
+      alert('✔️ Категория исправлена! Модель будет переобучена с этим исправлением.');
     } catch (err) {
-      alert('Ошибка при сохранении исправления: ' + (err.response?.data?.error || err.message));
+      alert('❗ Ошибка при сохранении исправления: ' + (err.response?.data?.error || err.message));
     }
   };
 
@@ -287,7 +285,7 @@ const PredictPage = () => {
       <div className="header">
         <div className="container flex flex-between items-center">
           <div>
-            <h1 className="header-title">Система классификации товаров</h1>
+            <h1 className="header-title">🔮 Система классификации товаров</h1>
           </div>
           <div className="flex items-center gap-lg">
             {role === 'admin' && (
@@ -306,7 +304,7 @@ const PredictPage = () => {
               className="btn btn-outline btn-sm"
               onClick={handleLogout}
             >
-              Выход
+              ❌ Выход
             </button>
           </div>
         </div>
@@ -364,7 +362,7 @@ const PredictPage = () => {
               <div className="divider">или</div>
 
               <div className="form-group">
-                <label className="form-label">Загрузить CSV файл с товарами</label>
+                <label className="form-label">📥 Загрузить CSV файл с товарами</label>
                 <div className="flex gap-md">
                   <label className="file-input-label">
                     <input
@@ -406,7 +404,7 @@ const PredictPage = () => {
                   className="btn btn-success btn-sm"
                   onClick={downloadResults}
                 >
-                  Выгрузить CSV
+                 📤 Выгрузить CSV
                 </button>
               </div>
 

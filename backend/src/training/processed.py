@@ -1,7 +1,6 @@
 import pandas as pd
 import pickle
 import os
-import re
 from config import Config
 from sklearn.feature_extraction.text import TfidfVectorizer
 
@@ -15,7 +14,7 @@ def preprocess_data(csv_file, min_samples_per_category=20, max_features=2000):
     
     df['product_name'] = df['product_name'].fillna('').astype(str)
     df['product_name'] = df['product_name'].str.lower().str.strip()
-    df['product_name'] = df['product_name'].str.replace(r'\s+', ' ', regex=True)  # множественные пробелы -> один
+    df['product_name'] = df['product_name'].str.replace(r'\s+', ' ', regex=True)
     
     df = df[df['product_name'] != '']
     df = df[df['category_path'].notna()]
@@ -24,9 +23,7 @@ def preprocess_data(csv_file, min_samples_per_category=20, max_features=2000):
     valid_categories = category_counts[category_counts >= min_samples_per_category].index
     df = df[df['category_path'].isin(valid_categories)]
     
-    print(f"✅ После фильтрации: {len(df)} товаров в {len(valid_categories)} категориях")
-
-    vectorizer = TfidfVectorizer(max_features=max_features, lowercase=False)  # lowercase уже применен
+    vectorizer = TfidfVectorizer(max_features=max_features, lowercase=False)
     X = vectorizer.fit_transform(df['product_name']).toarray()
 
     unique_categories = sorted(df['category_path'].unique())
@@ -52,9 +49,9 @@ def save_preprocessing_objects(vectorizer, to_id, to_label, output_dir=Config.MO
 
 def load_preprocessing_objects(output_dir=Config.MODELS_BIN):
     possible_paths = [
-        output_dir,  # "src/data/models_bin" (для локального запуска без --chdir)
-        output_dir.replace('src/', ''),  # "data/models_bin" (для Docker с --chdir src)
-        os.path.join('backend', output_dir),  # "backend/src/data/models_bin" (для локальной разработки)
+        output_dir,
+        output_dir.replace('src/', ''),
+        os.path.join('backend', output_dir),
     ]
     
     found_path = None

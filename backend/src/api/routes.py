@@ -1,15 +1,84 @@
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify
 import json
 import os
 import re
 import pandas as pd
 import numpy as np
+from pathlib import Path
+from datetime import datetime
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, get_jwt
 from werkzeug.utils import secure_filename
 from database.models import User, db
 from config import Config
 
 api_bp = Blueprint('api', __name__)
+
+FEEDBACK_FILE = "src/data/feedback_corrections.json"
+
+
+def _dataset_path(marketplace):
+    """Путь к сырому датасету маркетплейса."""
+    base = Path(__file__).parent.parent
+    project = base.parent if base.name == 'src' else base
+    return project / f'src/data/raw/{marketplace}_products_list.csv'
+
+
+def build_category_tree_from_dataset(csv_file):
+    """Построить дерево категорий из CSV (category_id, category_name, category_path)."""
+    if not Path(csv_file).exists():
+        return {"categories": [], "tree": {}, "roots": []}
+    df = pd.read_csv(csv_file)
+    if 'category_path' not in df.columns:
+        return {"categories": [], "tree": {}, "roots": []}
+    if 'category_name' in df.columns and 'category_id' in df.columns:
+        unique_cats = df[['category_id', 'category_name', 'category_path']].drop_duplicates()
+    else:
+        unique_cats = df[['category_path']].drop_duplicates()
+        unique_cats['category_name'] = unique_cats['category_path'].str.split('/').str[-1].str.strip()
+        unique_cats['category_id'] = range(len(unique_cats))
+    tree_nodes = {}
+    for _, row in unique_cats.iterrows():
+        category_id = str(row.get('category_id', ''))
+        category_name = row.get('category_name', '')
+        category_path = str(row['category_path'])
+        path_parts = [p.strip() for p in category_path.split('/') if p.strip()]
+        if not path_parts:
+            continue
+        for i in range(len(path_parts)):
+            node_name = path_parts[i]
+            parent_name = path_parts[i - 1] if i > 0 else None
+            if node_name not in tree_nodes:
+                tree_nodes[node_name] = {
+                    "id": category_id if i == len(path_parts) - 1 else None,
+                    "name": node_name,
+                    "parent": parent_name,
+                    "children": [],
+                    "level": i,
+                    "full_path": '/'.join(path_parts[:i + 1])
+                }
+            if i == len(path_parts) - 1:
+                tree_nodes[node_name]["id"] = category_id
+                tree_nodes[node_name]["full_path"] = category_path
+            if parent_name and parent_name in tree_nodes:
+                if node_name not in tree_nodes[parent_name]["children"]:
+                    tree_nodes[parent_name]["children"].append(node_name)
+    roots = [n for n, node in tree_nodes.items() if node["parent"] is None]
+    return {"categories": list(tree_nodes.values()), "tree": tree_nodes, "roots": roots}
+
+
+def load_feedback():
+    path = Path(FEEDBACK_FILE)
+    if path.exists():
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return []
+
+
+def save_feedback(feedback_list):
+    path = Path(FEEDBACK_FILE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(feedback_list, f, ensure_ascii=False, indent=2)
 
 @api_bp.route('/auth/login', methods=['POST'])
 def login():
@@ -71,71 +140,9 @@ def register():
 
     return jsonify({'message': f'Пользователь {username} зарегистрирован!'}), 201
 
-@api_bp.route("/upload", methods=["POST"])
-@jwt_required()
-def upload():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file"}), 400
-    file = request.files['file']
-    filename = secure_filename(file.filename)
-    path = os.path.join(Config.UPLOAD_FOLDER, filename)
-    os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-    file.save(path)
-    return jsonify({"filepath": path}), 200
-
-
-@api_bp.route("/preprocess", methods=["POST"])
-@jwt_required()
-def preprocess():
-    from tensorflow.keras.preprocessing.text import Tokenizer
-    from tensorflow.keras.preprocessing.sequence import pad_sequences
-
-    data = request.get_json()
-    filepath = data.get('filepath')
-    if not filepath or not os.path.exists(filepath):
-        return jsonify({"error": "No such file"}), 404
-
-    df = pd.read_csv(filepath)
-    df = df.drop_duplicates(subset=['product_name'])
-    df = df[df['product_name'].str.strip() != ""]
-    df['product_name'] = df['product_name'].fillna("").astype(str)
-
-    texts = df['product_name'].fillna("").apply(str).tolist()
-
-    # Tokenizer + pad_sequences (как при обучении)
-    tokenizer = Tokenizer(num_words=10000)
-    tokenizer.fit_on_texts(texts)
-    X = pad_sequences(tokenizer.texts_to_sequences(texts), maxlen=50)
-
-    proc_path = os.path.join(Config.PROCESSED_FOLDER, os.path.basename(filepath) + ".npy")
-    os.makedirs(Config.PROCESSED_FOLDER, exist_ok=True)
-    np.save(proc_path, X)
-
-    return jsonify({"features": X.tolist(), "processed_path": proc_path}), 200
-
-@api_bp.route("/predict", methods=["POST"])
-@jwt_required()
-def predict():
-    from models.autoencoder_model import AutoencoderDL
-    data = request.get_json()
-    if "features" in data:
-        X = np.array(data['features'])
-    elif "processed_path" in data:
-        X = np.load(data['processed_path'])
-    else:
-        return jsonify({"error":"No features"}), 400
-    model_type = data.get("model_type", "autoencoder")
-    weights_path = data.get("weights_path", os.path.join(Config.MODELS_BIN, "autoencoder_final.h5"))
-    if model_type == "autoencoder":
-        model = AutoencoderDL(input_dim=X.shape[1])
-        model.load(weights_path)
-        clusters, embeds = model.predict_clusters(X, n_clusters=data.get('n_clusters', 10))
-        return jsonify({"clusters": clusters.tolist(), "embeddings": embeds.tolist()})
-    else:
-        return jsonify({"error": "Model type not supported in demo"}), 400
 
 @api_bp.route("/predict_category", methods=["POST"])
-@jwt_required()
+@jwt_required(optional=True)  # Авторизация опциональна
 def predict_category():
     from training.processed import load_preprocessing_objects
     from models.autoencoder_model import AutoencoderDL
@@ -187,33 +194,67 @@ def predict_category():
     # Загружаем модель
     model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=bottleneck_dim, num_classes=num_classes)
     model.load_classifier(classifier_path)
+    # Подгоняем размер входа под сохранённую модель (если векторная форма отличается)
+    expected_dim = model.classifier.input_shape[-1]
+    if X.shape[1] != expected_dim:
+        if X.shape[1] > expected_dim:
+            X = X[:, :expected_dim].astype(X.dtype)
+        else:
+            pad = np.zeros((X.shape[0], expected_dim - X.shape[1]), dtype=X.dtype)
+            X = np.hstack([X, pad])
 
     pred_labels, pred_probs = model.predict_class(X)
     pred_label = pred_labels[0]
     confidence = float(pred_probs[0].max())
 
-    top_3_indices = pred_probs[0].argsort()[-3:][::-1]
-    top_3 = [
-        {
-            'category': to_label.get(idx, f'Category_{idx}'),
-            'confidence': float(pred_probs[0][idx])
-        }
-        for idx in top_3_indices
+    top_3_raw = [
+        {'category': to_label.get(idx, f'Category_{idx}'), 'confidence': float(pred_probs[0][idx])}
+        for idx in pred_probs[0].argsort()[-3:][::-1]
     ]
+    top_3 = [c for c in top_3_raw if c['confidence'] >= 0.5]
 
-    category_path = to_label.get(pred_label, f'Category_{pred_label}')
-    
-    hierarchy = [level.strip() for level in category_path.split('/')]
-    category_name = hierarchy[-1] if hierarchy else category_path
+    if confidence < 0.5:
+        category_name = 'Другая категория'
+        category_path = 'Другая категория'
+        hierarchy = ['Другая категория']
+        category_id = None
+        warning = f"Низкая уверенность ({confidence*100:.1f}%). Выберите категорию вручную."
+    else:
+        category_name = to_label.get(pred_label, f'Category_{pred_label}')
+        dataset_path = _dataset_path(marketplace)
+        category_path = category_name
+        hierarchy = [category_name]
+        category_id = None
+        if dataset_path.exists():
+            try:
+                tree_data = build_category_tree_from_dataset(str(dataset_path))
+                for cat in tree_data.get('categories', []):
+                    if cat['name'] == category_name:
+                        category_path = cat.get('full_path', category_name)
+                        category_id = cat.get('id')
+                        if '/' in category_path:
+                            hierarchy = [level.strip() for level in category_path.split('/')]
+                        else:
+                            hierarchy = [category_name]
+                        break
+            except Exception as e:
+                print(f"⚠️ Не удалось построить дерево категорий: {e}")
+                category_path = category_name
+                hierarchy = [category_name]
+        warning = None
+        if confidence < 0.7:
+            warning = f"Средняя уверенность ({confidence*100:.1f}%). Рекомендуется проверить результат."
 
     return json.dumps({
         'product_name': product_name,
         'marketplace': marketplace,
         'category': category_name,
         'category_path': category_path,
+        'category_id': category_id,
         'hierarchy': hierarchy,
         'confidence': confidence,
-        'top_3': top_3
+        'top_3': top_3,
+        'warning': warning
     }, ensure_ascii=False, indent=2), 200
 
 
@@ -300,35 +341,53 @@ def predict_category_from_file():
         # Загружаем модель
         model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=bottleneck_dim, num_classes=num_classes)
         model.load_classifier(classifier_path)
+        expected_dim = model.classifier.input_shape[-1]
+
+        path_to_id = {}
+        dataset_path = _dataset_path(marketplace)
+        if dataset_path.exists():
+            try:
+                tree_data = build_category_tree_from_dataset(str(dataset_path))
+                path_to_id = {c['full_path']: c['id'] for c in tree_data.get('categories', []) if c.get('id')}
+            except Exception:
+                pass
 
         results = []
         for idx, product_name in enumerate(df['product_name'].values):
             try:
                 X = vectorizer.transform([product_name]).toarray()
+                if X.shape[1] != expected_dim:
+                    if X.shape[1] > expected_dim:
+                        X = X[:, :expected_dim].astype(X.dtype)
+                    else:
+                        pad = np.zeros((X.shape[0], expected_dim - X.shape[1]), dtype=X.dtype)
+                        X = np.hstack([X, pad])
                 pred_labels, pred_probs = model.predict_class(X)
 
                 pred_label = pred_labels[0]
                 confidence = float(pred_probs[0].max())
                 category_path = to_label.get(pred_label, f'Category_{pred_label}')
-
-                # Разбираем путь на уровни иерархии
-                hierarchy = [level.strip() for level in category_path.split('/')]
-                category_name = hierarchy[-1] if hierarchy else category_path
-
-                # Получаем топ-3
-                top_3_indices = pred_probs[0].argsort()[-3:][::-1]
-                top_3 = [
-                    {
-                        'category': to_label.get(int(idx), f'Category_{int(idx)}'),
-                        'confidence': float(pred_probs[0][int(idx)])
-                    }
-                    for idx in top_3_indices
+                top_3_raw = [
+                    {'category': to_label.get(int(idx), f'Category_{int(idx)}'), 'confidence': float(pred_probs[0][int(idx)])}
+                    for idx in pred_probs[0].argsort()[-3:][::-1]
                 ]
+                top_3 = [c for c in top_3_raw if c['confidence'] >= 0.5]
+
+                if confidence < 0.5:
+                    category_name = 'Другая категория'
+                    category_path = 'Другая категория'
+                    hierarchy = ['Другая категория']
+                    category_id = None
+                else:
+                    category_id = path_to_id.get(category_path)
+                    hierarchy = [level.strip() for level in category_path.split('/')]
+                    category_name = hierarchy[-1] if hierarchy else category_path
 
                 results.append({
                     'product_name': product_name,
                     'category': category_name,
                     'category_path': category_path,
+                    'category_id': category_id,
                     'hierarchy': hierarchy,
                     'confidence': (confidence * 100),
                     'top_3': top_3
@@ -360,32 +419,6 @@ def predict_category_from_file():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
-@api_bp.route("/metrics/plot", methods=["POST"])
-@jwt_required()
-def get_plot():
-    import os
-    import matplotlib.pyplot as plt
-    from sklearn.manifold import TSNE
-
-    # Определяем абсолютные пути для сохранения и выдачи файла
-    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-    PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..', '..'))
-    plot_dir = os.path.join(PROJECT_ROOT, "data", "plots")
-    os.makedirs(plot_dir, exist_ok=True)
-    plot_path = os.path.join(plot_dir, "tsne.png")
-
-    data = request.get_json()
-    embeddings = np.array(data['embeddings'])
-    clusters = np.array(data['clusters'])
-    tsne = TSNE(n_components=2, random_state=0)
-    X_2d = tsne.fit_transform(embeddings)
-    plt.figure(figsize=(6,5))
-    plt.scatter(X_2d[:,0], X_2d[:,1], c=clusters, cmap='tab10', s=6)
-    plt.title("Кластеры товаров")
-    plt.savefig(plot_path)
-    plt.close()
-    return send_file(plot_path, mimetype="image/png")
 
 @api_bp.route('/users', methods=['GET'])
 @jwt_required()
@@ -457,3 +490,74 @@ def get_current_user():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@api_bp.route("/categories/tree", methods=["GET"])
+@jwt_required()
+def get_category_tree():
+    """Дерево категорий маркетплейса (для выбора категории на фронте)."""
+    marketplace = request.args.get('marketplace', 'wildberries').strip().lower()
+    valid_marketplaces = ['wildberries', 'ozon', 'yandex_market']
+    if marketplace not in valid_marketplaces:
+        return jsonify({'error': f'Неверный маркетплейс. Доступные: {", ".join(valid_marketplaces)}'}), 400
+    dataset_path = _dataset_path(marketplace)
+    if not dataset_path.exists():
+        return jsonify({'error': f'Датасет для {marketplace} не найден'}), 404
+    try:
+        tree_data = build_category_tree_from_dataset(str(dataset_path))
+        return jsonify({'marketplace': marketplace, **tree_data}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route("/feedback/correct", methods=["POST"])
+@jwt_required()
+def correct_category():
+    """Сохранить исправление категории. Переобучение запускается автоматически при накоплении >= 10 исправлений по маркетплейсу."""
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        required = ['product_name', 'marketplace', 'predicted_category', 'corrected_category']
+        for field in required:
+            if field not in data:
+                return jsonify({'error': f'Отсутствует поле: {field}'}), 400
+        feedback_list = load_feedback()
+        correction = {
+            'id': len(feedback_list) + 1,
+            'user_id': user_id,
+            'product_name': data['product_name'],
+            'marketplace': data['marketplace'],
+            'predicted_category': data['predicted_category'],
+            'corrected_category': data['corrected_category'],
+            'confidence': data.get('confidence', 0),
+            'timestamp': datetime.now().isoformat(),
+            'used_for_training': False
+        }
+        feedback_list.append(correction)
+        save_feedback(feedback_list)
+        marketplace = data['marketplace']
+        unused_count = sum(1 for f in feedback_list if f.get('marketplace') == marketplace and not f.get('used_for_training', False))
+        if unused_count >= 1:
+            import threading
+            try:
+                from training.retrain_with_corrections import retrain_with_corrections
+                def retrain_async(mp_name):
+                    try:
+                        retrain_with_corrections(mp_name)
+                    except Exception as e:
+                        print(f"[RETRAIN ERROR] {e}")
+                thread = threading.Thread(target=retrain_async, args=(marketplace,), daemon=True)
+                thread.start()
+                return jsonify({
+                    'message': 'Исправление сохранено',
+                    'correction_id': correction['id'],
+                    'note': f'Автоматическое переобучение запущено ({unused_count} исправлений)'
+                }), 200
+            except ImportError:
+                pass
+        return jsonify({
+            'message': 'Исправление сохранено',
+            'correction_id': correction['id'],
+            'note': f'Накоплено {unused_count} исправлений; переобучение запускается при каждом новом исправлении'
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

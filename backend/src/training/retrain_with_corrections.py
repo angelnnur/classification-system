@@ -1,9 +1,13 @@
 """
-Простое переобучение модели с учетом исправлений пользователей
+Улучшенное переобучение модели с учетом исправлений пользователей
+- Использует веса для исправлений (высокий вес)
+- Поддерживает fine-tuning вместо полного переобучения
+- Дублирует исправления для увеличения их влияния
 """
 import pandas as pd
 import json
 import os
+import numpy as np
 from pathlib import Path
 from config import Config
 from training.processed import preprocess_data, save_preprocessing_objects
@@ -29,29 +33,35 @@ def load_corrections(marketplace: str):
     
     return corrections
 
-def add_corrections_to_dataset(corrections, marketplace: str):
+def add_corrections_to_dataset(corrections, marketplace: str, duplicate_factor=3):
     """
-    Добавить исправления в датасет
+    Добавить исправления в датасет с возможностью дублирования
     
     Args:
         corrections: список исправлений
         marketplace: название маркетплейса
+        duplicate_factor: во сколько раз дублировать исправления (для увеличения влияния)
     
     Returns:
-        DataFrame с исправлениями
+        DataFrame с исправлениями и флагом is_correction
     """
     if not corrections:
         return pd.DataFrame()
     
     data = []
     for corr in corrections:
-        data.append({
-            'sku': f"correction_{corr['id']}",
-            'product_name': corr['product_name'],
-            'category_id': 0,  # Временный ID
-            'category_name': corr['corrected_category'],  # Используем исправленную категорию
-            'category_path': corr['corrected_category']  # Для совместимости
-        })
+        # Дублируем исправления для увеличения их влияния
+        for dup_idx in range(duplicate_factor):
+            data.append({
+                'sku': f"correction_{corr['id']}_{dup_idx}",
+                'product_name': corr['product_name'],
+                'category_id': 0,  # Временный ID
+                'category_name': corr['corrected_category'],  # Используем исправленную категорию
+                'category_path': corr['corrected_category'],  # Для совместимости
+                'is_correction': True,  # Флаг для идентификации исправлений
+                'correction_id': corr['id'],
+                'confidence': corr.get('confidence', 0.5)  # Сохраняем уверенность модели
+            })
     
     return pd.DataFrame(data)
 
@@ -72,20 +82,68 @@ def mark_corrections_as_used(marketplace: str):
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(corrections, f, ensure_ascii=False, indent=2)
 
-def retrain_with_corrections(marketplace: str):
+def create_sample_weights_for_training(df_before_preprocessing, df_after_preprocessing, 
+                                       correction_weight=5.0, low_confidence_penalty=0.5):
     """
-    Переобучить модель с учетом исправлений
+    Создать веса для примеров после предобработки.
+    Сопоставляет примеры до и после предобработки по product_name.
     
     Args:
-        marketplace: название маркетплейса (wildberries, ozon, yandex_market)
-    """
-    print(f"\n{'='*80}")
-    print(f"🔄 ПЕРЕОБУЧЕНИЕ МОДЕЛИ ДЛЯ {marketplace.upper()}")
-    print(f"{'='*80}")
+        df_before_preprocessing: датасет до предобработки (с колонкой is_correction)
+        df_after_preprocessing: датасет после предобработки (может быть меньше)
+        correction_weight: вес для исправлений (рекомендуется 3-10)
+        low_confidence_penalty: множитель для примеров с низкой уверенностью
     
+    Returns:
+        numpy array с весами для примеров после предобработки
+    """
+    # Создаем словарь: product_name -> вес
+    weight_map = {}
+    
+    for idx, row in df_before_preprocessing.iterrows():
+        product_name = str(row['product_name']).lower().strip()
+        weight = 1.0
+        
+        # Высокий вес для исправлений
+        if row.get('is_correction', False):
+            weight = correction_weight
+        
+        # Уменьшенный вес для примеров с низкой уверенностью
+        if 'confidence' in row and row['confidence'] < 0.5:
+            weight *= low_confidence_penalty
+        
+        weight_map[product_name] = weight
+    
+    # Создаем веса для примеров после предобработки
+    weights = []
+    correction_count = 0
+    
+    for idx, row in df_after_preprocessing.iterrows():
+        product_name = str(row['product_name']).lower().strip()
+        weight = weight_map.get(product_name, 1.0)
+        weights.append(weight)
+        
+        if weight >= correction_weight:
+            correction_count += 1
+    
+    weights = np.array(weights)
+    
+    print(f"   Исправлений с высоким весом: {correction_count}")
+    print(f"   Всего примеров: {len(weights)}")
+    
+    return weights
+
+
+def retrain_with_corrections(marketplace: str, use_fine_tuning=True, correction_weight=5.0, 
+                            duplicate_corrections=3):
+
     # 1. Загрузить исправления
     corrections = load_corrections(marketplace)
     print(f"\n📝 Найдено исправлений: {len(corrections)}")
+    
+    if not corrections:
+        print("⚠️ Нет новых исправлений для переобучения")
+        return None, None
     
     if corrections:
         for corr in corrections[:5]:  # Показать первые 5
@@ -103,42 +161,46 @@ def retrain_with_corrections(marketplace: str):
     existing_df = pd.read_csv(dataset_path)
     print(f"\n📊 Существующий датасет: {len(existing_df)} товаров")
     
-    # 3. Добавить исправления
-    corrections_df = add_corrections_to_dataset(corrections, marketplace)
+    # Добавить флаг is_correction для существующих данных
+    if 'is_correction' not in existing_df.columns:
+        existing_df['is_correction'] = False
+        existing_df['confidence'] = 1.0  # Высокая уверенность для существующих данных
     
-    if len(corrections_df) > 0:
-        # Объединить датасеты
-        # Если в существующем датасете есть category_name, используем его
-        if 'category_name' not in existing_df.columns and 'category_path' in existing_df.columns:
-            existing_df['category_name'] = existing_df['category_path'].str.split('/').str[-1].str.strip()
-        
-        # Объединить
-        combined_df = pd.concat([existing_df, corrections_df], ignore_index=True)
-        
-        # Удалить дубликаты по product_name (оставляем последний - исправленный)
-        combined_df = combined_df.drop_duplicates(subset=['product_name'], keep='last')
-        
-        print(f"✅ После добавления исправлений: {len(combined_df)} товаров")
-        print(f"   Добавлено новых: {len(corrections_df)}")
-    else:
-        combined_df = existing_df
-        print("⚠️ Нет новых исправлений для добавления")
+    # 3. Добавить исправления (с дублированием)
+    corrections_df = add_corrections_to_dataset(corrections, marketplace, duplicate_factor=duplicate_corrections)
+    
+    # Объединить датасеты
+    if 'category_name' not in existing_df.columns and 'category_path' in existing_df.columns:
+        existing_df['category_name'] = existing_df['category_path'].str.split('/').str[-1].str.strip()
+    
+    # Объединить
+    combined_df = pd.concat([existing_df, corrections_df], ignore_index=True)
+    
+    # Удалить дубликаты по product_name (оставляем последний - исправленный)
+    # Но сохраняем информацию о том, что это исправление
+    combined_df = combined_df.sort_values('is_correction', ascending=False)  # Исправления в конце
+    combined_df = combined_df.drop_duplicates(subset=['product_name'], keep='last')
+    
+    print(f"✅ После добавления исправлений: {len(combined_df)} товаров")
+    print(f"   Исправлений (с дублированием): {len(corrections_df)}")
+    print(f"   Уникальных исправлений: {len(corrections)}")
     
     # 4. Сохранить временный датасет
     temp_dataset = PROJECT_ROOT / f'src/data/raw/{marketplace}_with_corrections.csv'
     combined_df.to_csv(temp_dataset, index=False)
     
-    # 5. Предобработка и обучение
-    from training.train_marketplace_models import MARKETPLACE_CONFIG
+    # 5. Предобработка
+    from src.training.train import MARKETPLACE_CONFIG
     config = MARKETPLACE_CONFIG[marketplace]
     
     print(f"\n📊 Предобработка данных...")
-    print(f"   Используем category_name (дочерняя категория)")
+    
+    # Сохраняем датасет до предобработки для создания весов
+    df_before_preprocessing = combined_df.copy()
     
     X, y, vectorizer, to_id, to_label = preprocess_data(
         csv_file=str(temp_dataset),
         min_samples_per_category=config['min_samples'],
-        category_column='category_name',
         max_features=config['max_features']
     )
     
@@ -146,7 +208,33 @@ def retrain_with_corrections(marketplace: str):
     print(f"   X.shape: {X.shape}")
     print(f"   Количество категорий: {len(to_id)}")
     
-    # 6. Обучение
+    # 6. Загрузить датасет после предобработки для сопоставления
+    # (preprocess_data может удалить некоторые примеры)
+    df_after_preprocessing = pd.read_csv(temp_dataset)
+    df_after_preprocessing = df_after_preprocessing[
+        df_after_preprocessing['category_path'].isin(to_id.keys())
+    ]
+    
+    # 6. Создать веса для примеров
+    print(f"\n⚖️  Создание весов для примеров...")
+    sample_weights = create_sample_weights_for_training(
+        df_before_preprocessing,
+        df_after_preprocessing,
+        correction_weight=correction_weight
+    )
+    
+    # Проверяем, что размеры совпадают
+    if len(sample_weights) != len(X):
+        print(f"⚠️  Размеры не совпадают: weights={len(sample_weights)}, X={len(X)}")
+        # Обрезаем или дополняем до нужного размера
+        if len(sample_weights) > len(X):
+            sample_weights = sample_weights[:len(X)]
+        else:
+            sample_weights = np.pad(sample_weights, (0, len(X) - len(sample_weights)), constant_values=1.0)
+    
+    print(f"   Веса: min={sample_weights.min():.2f}, max={sample_weights.max():.2f}, mean={sample_weights.mean():.2f}")
+    
+    # 7. Обучение
     y_cat = to_categorical(y)
     num_classes = y_cat.shape[1]
     
@@ -155,36 +243,62 @@ def retrain_with_corrections(marketplace: str):
     
     save_preprocessing_objects(vectorizer, to_id, to_label, output_dir=model_dir)
     
-    model = AutoencoderDL(
-        input_dim=X.shape[1],
-        bottleneck_dim=config['bottleneck_dim'],
-        num_classes=num_classes
-    )
-    
-    epochs = 50 if X.shape[0] < 30000 else 30
-    
-    print(f"\n🏋️ Обучение модели...")
-    history = model.train_classifier(
-        X, y_cat,
-        epochs=epochs,
-        batch_size=32,
-        validation_split=0.2,
-        use_early_stopping=True
-    )
-    
-    # 7. Сохранить модель
     classifier_path = os.path.join(model_dir, 'classifier.h5')
+    
+    if use_fine_tuning and os.path.exists(classifier_path):
+        # Fine-tuning: загружаем существующую модель и дообучаем
+        print(f"\n🔧 FINE-TUNING существующей модели...")
+        
+        # Загружаем существующую модель
+        model = AutoencoderDL(
+            input_dim=X.shape[1],
+            bottleneck_dim=config['bottleneck_dim'],
+            num_classes=num_classes
+        )
+        model.load_classifier(classifier_path)
+        
+        # Fine-tuning с меньшим learning rate
+        epochs = 15  # Меньше эпох для fine-tuning
+        history = model.fine_tune(
+            X, y_cat,
+            epochs=epochs,
+            batch_size=32,
+            validation_split=0.2,
+            sample_weight=sample_weights,
+            learning_rate=0.0001  # Меньший learning rate для аккуратного обучения
+        )
+    else:
+        # Полное переобучение с нуля
+        print(f"\n🏋️  Полное переобучение модели...")
+        
+        model = AutoencoderDL(
+            input_dim=X.shape[1],
+            bottleneck_dim=config['bottleneck_dim'],
+            num_classes=num_classes
+        )
+        
+        epochs = 50 if X.shape[0] < 30000 else 30
+        history = model.train_classifier(
+            X, y_cat,
+            epochs=epochs,
+            batch_size=32,
+            validation_split=0.2,
+            use_early_stopping=True,
+            sample_weight=sample_weights
+        )
+    
+    # 8. Сохранить модель
     model.save(classifier_path)
     
-    # 8. Пометить исправления как использованные
-    if corrections:
-        mark_corrections_as_used(marketplace)
-        print(f"\n✅ Исправления помечены как использованные")
+    # 9. Пометить исправления как использованные
+    mark_corrections_as_used(marketplace)
+    print(f"\n✅ Исправления помечены как использованные")
     
     print(f"\n✅ МОДЕЛЬ ПЕРЕОБУЧЕНА!")
     print(f"   Путь: {classifier_path}")
     print(f"   Категорий: {num_classes}")
     print(f"   Товаров: {X.shape[0]:,}")
+    print(f"   Исправлений учтено: {len(corrections)}")
     
     return model, history
 

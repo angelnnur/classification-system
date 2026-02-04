@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// Используем переменную окружения или fallback на localhost для разработки
+// URL бэкенда: порт 5001 (как у Flask по умолчанию) и путь /api
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 const api = axios.create({

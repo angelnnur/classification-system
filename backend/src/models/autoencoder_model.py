@@ -1,25 +1,9 @@
-import os
-# КРИТИЧЕСКИ ВАЖНО: Отключаем GPU ПЕРЕД импортом Keras/TensorFlow
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
-
-# Импортируем TensorFlow и настраиваем его ПЕРЕД импортом Keras
-try:
-    import tensorflow as tf
-    # Явно отключаем все GPU устройства
-    tf.config.set_visible_devices([], 'GPU')
-    # Ограничиваем использование памяти
-    tf.config.set_soft_device_placement(True)
-    tf.config.threading.set_inter_op_parallelism_threads(1)
-    tf.config.threading.set_intra_op_parallelism_threads(1)
-except Exception as e:
-    print(f"⚠️  Предупреждение при настройке TensorFlow: {e}")
-
 from keras.models import Model, load_model
-from keras.layers import Dense, Input, Dropout, BatchNormalization
+from keras.layers import Dense, Input, Dropout
 from keras.losses import CategoricalCrossentropy
 from keras.optimizers import Adam
+from keras.regularizers import l2
+import matplotlib.pyplot as plt
 
 
 class AutoencoderDL:
@@ -29,26 +13,32 @@ class AutoencoderDL:
         self.num_classes = num_classes
         self.classifier = None
 
-    def build_model(self, dropout_rate=0.3):
+    def build_model(self, dropout_rate=0.5, l2_reg=0.0001):
         input_layer = Input(shape=(self.input_dim,), name='input')
 
-        encoder_layer = Dense(1024, activation="relu")(input_layer)
+
+        encoder_layer = Dense(self.bottleneck_dim*8, activation="relu", 
+                             kernel_regularizer=l2(l2_reg))(input_layer)
         encoder_layer = Dropout(dropout_rate)(encoder_layer)
         
-        encoder_layer = Dense(512, activation="relu")(encoder_layer)
+        encoder_layer = Dense(self.bottleneck_dim*4, activation="relu",
+                             kernel_regularizer=l2(l2_reg))(encoder_layer)
         encoder_layer = Dropout(dropout_rate)(encoder_layer)
         
-        encoder_layer = Dense(256, activation="relu")(encoder_layer)
-        encoder_layer = Dropout(dropout_rate * 0.7)(encoder_layer)
+        encoder_layer = Dense(self.bottleneck_dim*2, activation="relu",
+                             kernel_regularizer=l2(l2_reg))(encoder_layer)
+        encoder_layer = Dropout(dropout_rate * 0.8)(encoder_layer)
         
-        bottleneck_layer = Dense(self.bottleneck_dim, name="bottleneck_layer")(encoder_layer)
+        bottleneck_layer = Dense(self.bottleneck_dim, name="bottleneck_layer",
+                                 kernel_regularizer=l2(l2_reg))(encoder_layer)
 
         # Классификация
-        output = Dense(self.num_classes, activation='softmax', name='output')(bottleneck_layer)
+        output = Dense(self.num_classes, activation='softmax', name='output',
+                      kernel_regularizer=l2(l2_reg))(bottleneck_layer)
 
         self.classifier = Model(inputs=input_layer, outputs=output, name='classifier')
 
-        optimizer = Adam(learning_rate=0.001)
+        optimizer = Adam(learning_rate=0.0005)
         self.classifier.compile(
             loss=CategoricalCrossentropy(),
             optimizer=optimizer,
@@ -58,28 +48,32 @@ class AutoencoderDL:
         return self.classifier
 
     def train_classifier(self, X, y, epochs=50, batch_size=64, validation_split=0.2, use_early_stopping=True):
-
         if self.classifier is None:
             self.build_model()
-
-        print(f"\n[INFO] ПАРАМЕТРЫ ОБУЧЕНИЯ:")
-        print(f"  X.shape={X.shape}, y.shape={y.shape}")
-        print(f"  epochs={epochs}, batch_size={batch_size}")
-        print(f"  validation_split={validation_split}")
-
+       
         callbacks = []
         
-        # Early Stopping для предотвращения переобучения
         if use_early_stopping and validation_split > 0:
-            from keras.callbacks import EarlyStopping
+            from keras.callbacks import EarlyStopping, ReduceLROnPlateau
+            
             early_stopping = EarlyStopping(
                 monitor='val_loss',
                 patience=5,
                 restore_best_weights=True,
-                verbose=1
+                verbose=1,
+                min_delta=0.001
             )
             callbacks.append(early_stopping)
-
+            
+            reduce_lr = ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.5,
+                patience=3,
+                min_lr=0.00001,
+                verbose=1
+            )
+            callbacks.append(reduce_lr)
+       
         history = self.classifier.fit(
             X, y,
             epochs=epochs,
@@ -90,13 +84,10 @@ class AutoencoderDL:
             callbacks=callbacks
         )
 
-        print("\n[OK] Обучение завершено!")
-
-        # Показать финальные метрики
         final_train_acc = history.history['accuracy'][-1]
         final_train_loss = history.history['loss'][-1]
 
-        print(f"\n[РЕЗУЛЬТАТЫ]")
+        print(f"\nРЕЗУЛЬТАТЫ")
         print(f"  Train Accuracy: {final_train_acc:.4f} ({final_train_acc * 100:.1f}%)")
         print(f"  Train Loss:     {final_train_loss:.4f}")
         
@@ -105,13 +96,45 @@ class AutoencoderDL:
             final_val_loss = history.history['val_loss'][-1]
             print(f"  Val Accuracy:   {final_val_acc:.4f} ({final_val_acc * 100:.1f}%)")
             print(f"  Val Loss:       {final_val_loss:.4f}")
+        
+        self.plot_training_history(history)
 
         return history
+    
+    def plot_training_history(self, history, save_path='backend/src/data/raw/models_bin/ozon/plt.png'):
+        import os
+        os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
+        epochs = range(1, len(history.history['loss']) + 1)
+        
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+        
+        # График 1: Функция потерь (Loss)
+        ax1.plot(epochs, history.history['loss'], 'r.', label='Обучающая выборка', markersize=8)
+        if 'val_loss' in history.history:
+            ax1.plot(epochs, history.history['val_loss'], 'g*', label='Валидационная выборка', markersize=8)
+        ax1.set_xlabel('Эпоха')
+        ax1.set_ylabel('Функция потерь (CategoricalCrossentropy)')
+        ax1.set_title('Изменение функции потерь')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        
+        # График 2: Точность (Accuracy)
+        ax2.plot(epochs, history.history['accuracy'], 'b.', label='Обучающая выборка', markersize=8)
+        if 'val_accuracy' in history.history:
+            ax2.plot(epochs, history.history['val_accuracy'], 'm*', label='Валидационная выборка', markersize=8)
+        ax2.set_xlabel('Эпоха')
+        ax2.set_ylabel('Точность (Accuracy)')
+        ax2.set_title('Изменение точности')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+        plt.close()
 
     def predict_class(self, X):
-        if self.classifier is None:
-            raise ValueError("Classifier not built. Call build_model() first.")
-
         probs = self.classifier.predict(X, verbose=0)
         labels = probs.argmax(axis=1)
         return labels, probs
@@ -120,20 +143,4 @@ class AutoencoderDL:
         self.classifier.save(classifier_path)
 
     def load_classifier(self, path):
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Model not found at {path}")
-        
-        # Убеждаемся что GPU отключен перед загрузкой модели
-        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-        try:
-            import tensorflow as tf
-            tf.config.set_visible_devices([], 'GPU')
-        except:
-            pass
-        
-        try:
-            self.classifier = load_model(path)
-            print(f"✅ Модель загружена из {path}")
-        except Exception as e:
-            print(f"❌ Ошибка загрузки модели: {e}")
-            raise
+        self.classifier = load_model(path)

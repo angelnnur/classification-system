@@ -1,70 +1,45 @@
 """
-Кэш для моделей ML - загружает модели один раз и переиспользует их
-Это экономит память и ускоряет работу
+Кэш моделей и дерева категорий по маркетплейсу.
+Снижает повторную загрузку с диска при частых запросах.
 """
-import os
-# КРИТИЧЕСКИ ВАЖНО: Отключаем GPU ПЕРЕД любым импортом TensorFlow/Keras
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
+from threading import Lock
 
-from functools import lru_cache
-from training.processed import load_preprocessing_objects as _load_preprocessing_objects
-from config import Config
+_models = {}  # marketplace -> (model, vectorizer, to_id, to_label, expected_dim)
+_tree_cache = {}  # marketplace -> tree_data
+_lock = Lock()
 
-# Глобальный кэш для моделей
-_model_cache = {}
-_vectorizer_cache = None
-_label_mappings_cache = None
 
-def get_preprocessing_objects():
-    """Получить vectorizer и маппинги категорий (кэшируется)"""
-    global _vectorizer_cache, _label_mappings_cache
-    
-    if _vectorizer_cache is None or _label_mappings_cache is None:
-        vectorizer, to_id, to_label = _load_preprocessing_objects(Config.MODELS_BIN)
-        _vectorizer_cache = vectorizer
-        _label_mappings_cache = (to_id, to_label)
-        print("✅ Preprocessing objects загружены в кэш")
-    
-    return _vectorizer_cache, _label_mappings_cache[0], _label_mappings_cache[1]
+def get_cached_model(marketplace):
+    """Вернуть закэшированную модель и препроцессинг или None."""
+    with _lock:
+        return _models.get(marketplace)
 
-def get_model_key(input_dim, bottleneck_dim, num_classes, classifier_path):
-    """Создать ключ для кэша модели"""
-    return f"{input_dim}_{bottleneck_dim}_{num_classes}_{classifier_path}"
 
-def get_cached_model(input_dim, bottleneck_dim, num_classes, classifier_path):
-    """Получить модель из кэша или загрузить новую"""
-    # Импортируем только когда модель действительно нужна (lazy import)
-    # Это предотвращает падения при старте приложения
-    try:
-        from models.autoencoder_model import AutoencoderDL
-    except Exception as e:
-        print(f"❌ Ошибка импорта AutoencoderDL: {e}")
-        raise
-    
-    model_key = get_model_key(input_dim, bottleneck_dim, num_classes, classifier_path)
-    
-    if model_key not in _model_cache:
-        print(f"📦 Загрузка модели в кэш: {model_key}")
-        try:
-            model = AutoencoderDL(input_dim=input_dim, bottleneck_dim=bottleneck_dim, num_classes=num_classes)
-            model.load_classifier(classifier_path)
-            _model_cache[model_key] = model
-            print(f"✅ Модель загружена в кэш")
-        except Exception as e:
-            print(f"❌ Ошибка загрузки модели: {e}")
-            raise
-    else:
-        print(f"♻️  Использование модели из кэша")
-    
-    return _model_cache[model_key]
+def set_cached_model(marketplace, model, vectorizer, to_id, to_label, expected_dim):
+    """Сохранить модель в кэш."""
+    with _lock:
+        _models[marketplace] = (model, vectorizer, to_id, to_label, expected_dim)
 
-def clear_cache():
-    """Очистить кэш моделей (для тестирования)"""
-    global _model_cache, _vectorizer_cache, _label_mappings_cache
-    _model_cache.clear()
-    _vectorizer_cache = None
-    _label_mappings_cache = None
-    print("🗑️  Кэш моделей очищен")
 
+def get_cached_tree(marketplace):
+    """Вернуть закэшированное дерево категорий или None."""
+    with _lock:
+        return _tree_cache.get(marketplace)
+
+
+def set_cached_tree(marketplace, tree_data):
+    """Сохранить дерево в кэш."""
+    with _lock:
+        _tree_cache[marketplace] = tree_data
+
+
+def invalidate_model(marketplace):
+    """Сбросить кэш модели (например после переобучения)."""
+    with _lock:
+        _models.pop(marketplace, None)
+
+
+def invalidate_tree(marketplace):
+    """Сбросить кэш дерева."""
+    with _lock:
+        _tree_cache.pop(marketplace, None)

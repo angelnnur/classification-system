@@ -1,0 +1,145 @@
+[
+  {
+    "id": 1,
+    "user_id": "1",
+    "product_name": "Ноутбук Macbook Air 1T",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.35600000000000004,
+    "timestamp": "2026-02-02T08:57:54.524239",
+    "used_for_training": false
+  },
+  {
+    "id": 2,
+    "user_id": "1",
+    "product_name": "Ноутбук Macbook Air 1T",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.35600000000000004,
+    "timestamp": "2026-02-02T08:58:28.333622",
+    "used_for_training": false
+  },
+  {
+    "id": 3,
+    "user_id": "1",
+    "product_name": "Apple MacBook Air 13.6\"",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.23629999999999998,
+    "timestamp": "2026-02-02T17:12:04.320575",
+    "used_for_training": false
+  },
+  {
+    "id": 4,
+    "user_id": "1",
+    "product_name": "Apple MacBook Air 13.6\"",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.23629999999999998,
+    "timestamp": "2026-02-02T17:12:27.725450",
+    "used_for_training": false
+  },
+  {
+    "id": 5,
+    "user_id": "1",
+    "product_name": "Apple MacBook Air 13\" (M4, 10C CPU/10C GPU, 2025)",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.1955,
+    "timestamp": "2026-02-02T17:49:09.045628",
+    "used_for_training": false
+  },
+  {
+    "id": 6,
+    "user_id": "1",
+    "product_name": "Apple MacBook Air 13\" (M4, 10C CPU/10C GPU, 2025)",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.1955,
+    "timestamp": "2026-02-02T17:50:49.196171",
+    "used_for_training": false
+  },
+  {
+    "id": 7,
+    "user_id": "1",
+    "product_name": "Apple MacBook Air 13\" (M4, 10C CPU/10C GPU, 2025)",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.1955,
+    "timestamp": "2026-02-02T17:54:29.780742",
+    "used_for_training": false
+  },
+  {
+    "id": 8,
+    "user_id": "1",
+    "product_name": "Apple MacBook Air 13\" (M4, 10C CPU/10C GPU, 2025)",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.1955,
+    "timestamp": "2026-02-02T18:06:56.406814",
+    "used_for_training": false
+  },
+  {
+    "id": 9,
+    "user_id": "1",
+    "product_name": "Apple MacBook Air 13\" (M4, 10C CPU/10C GPU, 2025)",
+    "marketplace": "ozon",
+    "predicted_category": "Электроника / Компьютеры",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.1955,
+    "timestamp": "2026-02-02T18:09:29.206222",
+    "used_for_training": false
+  },
+  {
+    "id": 10,
+    "user_id": "1",
+    "product_name": "Apple MacBook Air 13\" (M4, 10C CPU/10C GPU, 2025)",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.1955,
+    "timestamp": "2026-02-02T18:15:50.533765",
+    "used_for_training": false
+  },
+  {
+    "id": 11,
+    "user_id": "1",
+    "product_name": "Apple MacBook Air 13\" (M4, 10C CPU/10C GPU, 2025)",
+    "marketplace": "ozon",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.1955,
+    "timestamp": "2026-02-02T18:19:37.002793",
+    "used_for_training": false
+  },
+  {
+    "id": 12,
+    "user_id": "1",
+    "product_name": "Apple MacBook Air 13\" (M4, 10C CPU/10C GPU, 2025)",
+    "marketplace": "ozon",
+    "predicted_category": "Электроника / Компьютеры",
+    "corrected_category": "Электроника / Компьютеры",
+    "confidence": 0.1955,
+    "timestamp": "2026-02-02T18:20:58.403790",
+    "used_for_training": false
+  },
+  {
+    "id": 13,
+    "user_id": "1",
+    "product_name": "Apple Iphone 16",
+    "marketplace": "wildberries",
+    "predicted_category": "Другая категория",
+    "corrected_category": "Смартфоны и гаджеты/Смартфоны",
+    "confidence": 0.253,
+    "timestamp": "2026-02-03T23:02:45.714446",
+    "used_for_training": false
+  }
+]

@@ -36,13 +36,13 @@ const LoginPage = () => {
 
           {error && (
             <div className="alert alert-error">
-              ⚠️ {error}
+              ❗ {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="login-form">
             <div className="form-group">
-              <label className="form-label">Username</label>
+              <label className="form-label">Логин</label>
               <input
                 type="text"
                 className="form-input"
@@ -78,7 +78,7 @@ const LoginPage = () => {
                   Загрузка...
                 </>
               ) : (
-                'Вход'
+                '🗝️ Вход'
               )}
             </button>
           </form>
